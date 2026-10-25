@@ -99,3 +99,26 @@ bun run contracts:build   # forge build
 bun run contracts:test    # forge test
 bun run check             # oxlint + tsc --noEmit
 ```
+
+---
+
+## Incident Log
+
+### 2026-10-25: MetaMask transaction failure — Arc Testnet RPC
+
+**Symptom:** `approveStore` and all write transactions silently failed (no MetaMask confirmation popup). Error: `Requested resource not available` / `{isTrusted: true}`.
+
+**Root cause (confirmed):** The Arc Testnet RPC URL `https://rpc.testnet.arc.io` is the correct endpoint. Two alternative URLs were found to be non-functional:
+- `https://rpc.testnet.arc.network` — DNS did not resolve
+- `https://rpc.quicknode.testnet.arc.network` — did not return chain ID
+
+Additionally, two contributing code issues were found and fixed:
+1. `wagmi` `transport: http()` was called without an explicit RPC URL, causing `chain: undefined` in `writeContract` calls.
+2. All `writeContract` calls were missing `chainId`, causing wagmi to attempt automatic chain switching which failed silently in environments where MetaMask's `window.ethereum` is inaccessible (e.g. iframes).
+
+**Fix applied:**
+- `src/config.ts`: `http()` → `http('https://rpc.testnet.arc.io')` (explicit URL from `arcTestnet.rpcUrls.default.http[0]`)
+- `src/hooks/useLuckyPass.ts`: added `chainId: CHAIN_ID` to all `writeContract` calls
+- MetaMask RPC setting updated to `https://rpc.testnet.arc.io`
+
+**Verified:** `approveStore` succeeded on Vercel-deployed app with MetaMask on Arc Testnet (Chain ID 5042002).
