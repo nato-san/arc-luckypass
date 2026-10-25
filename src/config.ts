@@ -16,6 +16,9 @@ import { arcTestnet } from 'viem/chains'
 import { injected, coinbaseWallet, walletConnect } from 'wagmi/connectors'
 import { registerChain } from './tracing'
 
+// Explicit RPC URLs — wagmi requires a non-empty transport to resolve chain objects
+const ARC_TESTNET_RPC = arcTestnet.rpcUrls.default.http[0]  // https://rpc.testnet.arc.io
+
 // Pre-register chain RPC URLs so trace events show correct chain names immediately
 registerChain(arcTestnet.id, arcTestnet.rpcUrls.default.http[0])
 
@@ -48,7 +51,7 @@ export const config = createConfig({
   chains: [arcTestnet, mainnet], // mainnet needed for ENS resolution
   connectors,
   transports: {
-    [arcTestnet.id]: http(),
+    [arcTestnet.id]: http(ARC_TESTNET_RPC),
     [mainnet.id]: http(), // ENS resolution uses mainnet
   },
 })

@@ -236,7 +236,12 @@ export function StoreManager() {
   }, [approveStore.isSuccess, t])
 
   useEffect(() => {
-    if (approveStore.error) toast.error(t('toast.approveStoreError'))
+    if (!approveStore.error) return
+    const msg = approveStore.error instanceof Error ? approveStore.error.message : JSON.stringify(approveStore.error)
+    // Surface the first meaningful line (wagmi errors can be long)
+    const short = msg.split('\n')[0]?.slice(0, 120) ?? msg
+    toast.error(`${t('toast.approveStoreError')}: ${short}`)
+    console.error('[approveStore]', approveStore.error)
   }, [approveStore.error, t])
 
   useEffect(() => {
@@ -244,7 +249,11 @@ export function StoreManager() {
   }, [revokeStore.isSuccess, t])
 
   useEffect(() => {
-    if (revokeStore.error) toast.error(t('toast.revokeStoreError'))
+    if (!revokeStore.error) return
+    const msg = revokeStore.error instanceof Error ? revokeStore.error.message : JSON.stringify(revokeStore.error)
+    const short = msg.split('\n')[0]?.slice(0, 120) ?? msg
+    toast.error(`${t('toast.revokeStoreError')}: ${short}`)
+    console.error('[revokeStore]', revokeStore.error)
   }, [revokeStore.error, t])
 
   // Guard: owner only (rendered after all hooks)
@@ -263,6 +272,7 @@ export function StoreManager() {
       return
     }
     const target = inputAddr
+    console.log('[approveStore] calling with target:', target, 'from address:', address)
     approveStore.approveStore(target)
     toast.info(t('toast.approveStoreLoading'))
     setInputAddr('')

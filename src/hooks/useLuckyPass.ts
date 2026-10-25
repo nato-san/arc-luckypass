@@ -156,7 +156,7 @@ export function useEnter() {
   const { isLoading: isConfirming, isSuccess } = useWaitForTransactionReceipt({ hash })
   return {
     enter: (lotId: bigint) =>
-      writeContract({ address: LUCKY_PASS_ADDRESS, abi: LUCKY_PASS_ABI, functionName: 'enter', args: [lotId] }),
+      writeContract({ chainId: CHAIN_ID, address: LUCKY_PASS_ADDRESS, abi: LUCKY_PASS_ABI, functionName: 'enter', args: [lotId] }),
     hash, isPending, isConfirming, isSuccess, error,
   }
 }
@@ -166,7 +166,7 @@ export function useApproveUsdc() {
   const { isLoading: isConfirming, isSuccess } = useWaitForTransactionReceipt({ hash })
   return {
     approve: (amount: bigint) =>
-      writeContract({ address: USDC_ADDRESS, abi: erc20Abi, functionName: 'approve', args: [LUCKY_PASS_ADDRESS, amount] }),
+      writeContract({ chainId: CHAIN_ID, address: USDC_ADDRESS, abi: erc20Abi, functionName: 'approve', args: [LUCKY_PASS_ADDRESS, amount] }),
     hash, isPending, isConfirming, isSuccess, error,
   }
 }
@@ -176,7 +176,7 @@ export function usePurchase() {
   const { isLoading: isConfirming, isSuccess, data: receipt } = useWaitForTransactionReceipt({ hash })
   return {
     purchase: (lotId: bigint) =>
-      writeContract({ address: LUCKY_PASS_ADDRESS, abi: LUCKY_PASS_ABI, functionName: 'purchase', args: [lotId] }),
+      writeContract({ chainId: CHAIN_ID, address: LUCKY_PASS_ADDRESS, abi: LUCKY_PASS_ABI, functionName: 'purchase', args: [lotId] }),
     hash, isPending, isConfirming, isSuccess, receipt, error,
   }
 }
@@ -187,7 +187,7 @@ export function useRedeem() {
   return {
     redeem: (tokenId: bigint, signature: `0x${string}`, nonce: bigint, timestamp: bigint) =>
       writeContract({
-        address: LUCKY_PASS_ADDRESS, abi: LUCKY_PASS_ABI, functionName: 'redeem',
+        chainId: CHAIN_ID, address: LUCKY_PASS_ADDRESS, abi: LUCKY_PASS_ABI, functionName: 'redeem',
         args: [tokenId, signature, nonce, timestamp],
       }),
     hash, isPending, isConfirming, isSuccess, error,
@@ -204,7 +204,7 @@ export function useCreateLot() {
       supply: number, paymentWindow: bigint, maxEntrants: number,
       entryOpenAt: bigint, entryCloseAt: bigint, fixedDeadlineAt: bigint,
     ) => writeContract({
-      address: LUCKY_PASS_ADDRESS, abi: LUCKY_PASS_ABI, functionName: 'createLot',
+      chainId: CHAIN_ID, address: LUCKY_PASS_ADDRESS, abi: LUCKY_PASS_ABI, functionName: 'createLot',
       args: [name, description, priceUsdc, supply, paymentWindow, maxEntrants,
              entryOpenAt, entryCloseAt, fixedDeadlineAt],
     }),
@@ -218,7 +218,7 @@ export function useRequestDraw() {
   return {
     requestDraw: (lotId: bigint, vrfFeeWei: bigint) =>
       writeContract({
-        address: LUCKY_PASS_ADDRESS, abi: LUCKY_PASS_ABI, functionName: 'requestDraw',
+        chainId: CHAIN_ID, address: LUCKY_PASS_ADDRESS, abi: LUCKY_PASS_ABI, functionName: 'requestDraw',
         args: [lotId], value: vrfFeeWei,
       }),
     hash, isPending, isConfirming, isSuccess, error,
@@ -230,7 +230,7 @@ export function useSelectWinners() {
   const { isLoading: isConfirming, isSuccess } = useWaitForTransactionReceipt({ hash })
   return {
     selectWinners: (lotId: bigint) =>
-      writeContract({ address: LUCKY_PASS_ADDRESS, abi: LUCKY_PASS_ABI, functionName: 'selectWinners', args: [lotId] }),
+      writeContract({ chainId: CHAIN_ID, address: LUCKY_PASS_ADDRESS, abi: LUCKY_PASS_ABI, functionName: 'selectWinners', args: [lotId] }),
     hash, isPending, isConfirming, isSuccess, error,
   }
 }
@@ -241,7 +241,7 @@ export function useSetVenueOperator() {
   return {
     setVenueOperator: (lotId: bigint, operator: `0x${string}`, authorized: boolean) =>
       writeContract({
-        address: LUCKY_PASS_ADDRESS, abi: LUCKY_PASS_ABI, functionName: 'setVenueOperator',
+        chainId: CHAIN_ID, address: LUCKY_PASS_ADDRESS, abi: LUCKY_PASS_ABI, functionName: 'setVenueOperator',
         args: [lotId, operator, authorized],
       }),
     hash, isPending, isConfirming, isSuccess, error,
@@ -254,7 +254,7 @@ export function usePromoteWaitlist() {
   return {
     promoteWaitlist: (lotId: bigint, winnerSlot: number) =>
       writeContract({
-        address: LUCKY_PASS_ADDRESS, abi: LUCKY_PASS_ABI, functionName: 'promoteWaitlist',
+        chainId: CHAIN_ID, address: LUCKY_PASS_ADDRESS, abi: LUCKY_PASS_ABI, functionName: 'promoteWaitlist',
         args: [lotId, winnerSlot],
       }),
     hash, isPending, isConfirming, isSuccess, error,
@@ -279,7 +279,7 @@ export function useApproveStore() {
   const { isLoading: isConfirming, isSuccess } = useWaitForTransactionReceipt({ hash })
   return {
     approveStore: (store: `0x${string}`) =>
-      writeContract({ address: LUCKY_PASS_ADDRESS, abi: LUCKY_PASS_ABI, functionName: 'approveStore', args: [store] }),
+      writeContract({ chainId: CHAIN_ID, address: LUCKY_PASS_ADDRESS, abi: LUCKY_PASS_ABI, functionName: 'approveStore', args: [store] }),
     hash, isPending, isConfirming, isSuccess, error,
   }
 }
@@ -289,7 +289,7 @@ export function useRevokeStore() {
   const { isLoading: isConfirming, isSuccess } = useWaitForTransactionReceipt({ hash })
   return {
     revokeStore: (store: `0x${string}`) =>
-      writeContract({ address: LUCKY_PASS_ADDRESS, abi: LUCKY_PASS_ABI, functionName: 'revokeStore', args: [store] }),
+      writeContract({ chainId: CHAIN_ID, address: LUCKY_PASS_ADDRESS, abi: LUCKY_PASS_ABI, functionName: 'revokeStore', args: [store] }),
     hash, isPending, isConfirming, isSuccess, error,
   }
 }
