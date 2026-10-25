@@ -97,6 +97,21 @@ bun run contracts:test    # forge test
 bun run check
 ```
 
+### GitHub への更新手順
+
+```bash
+# 変更をコミット
+git add <変更ファイル>
+git commit -m "変更内容の説明"
+
+# Push（ターミナルで Fine-Grained Token を使って認証）
+git push origin main
+# Username: nato-san
+# Password: <Fine-Grained Token（arc-luckypass リポジトリ限定・Contents: Read & Write）>
+```
+
+**注意:** `.env`・`traces.jsonl`・`console.jsonl`・`arc-studio-plans/`・`docs/` は `.gitignore` で除外済みです。`git add .` を使う場合も自動的にスキップされます。
+
 ### Arc Studio での開発
 
 このプロジェクトは [Arc Studio](https://studio.arc.io) で開発されました。Arc Studio はウォレット接続、コントラクトの作成・デプロイ・テスト、フロントエンドの構築をチャット形式で行える開発環境です。
@@ -203,6 +218,21 @@ bun run check
 | Variable | Required | Description |
 |---|---|---|
 | `VITE_WALLETCONNECT_PROJECT_ID` | Optional | Reown/WalletConnect Project ID. Without it, only injected wallets work. Get one free at [cloud.reown.com](https://cloud.reown.com). |
+
+### Pushing updates to GitHub
+
+```bash
+# Stage and commit changes
+git add <changed files>
+git commit -m "describe your change"
+
+# Push (authenticate in the terminal with a Fine-Grained Token)
+git push origin main
+# Username: nato-san
+# Password: <Fine-Grained Token — arc-luckypass repo only, Contents: Read & Write>
+```
+
+**Note:** `.env`, `traces.jsonl`, `console.jsonl`, `arc-studio-plans/`, and `docs/` are excluded by `.gitignore` and will never be staged by `git add .`.
 
 ### Developing with Arc Studio
 
