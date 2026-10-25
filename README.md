@@ -60,7 +60,8 @@ Arc LuckyPass は、Arc ブロックチェーン上で動作する、限定商�
 
 | バージョン | アドレス | エクスプローラー |
 |---|---|---|
-| v2 — マルチストア（現行） | `0x101c391d239a647d590d8493aae1dd5770f4a33a` | [View](https://explorer.testnet.arc.io/address/0x101c391d239a647d590d8493aae1dd5770f4a33a) |
+| v3 — 応募期間・絶対日時締切（現行） | `0xab7678c528f1d517d642c13e3fd97124a743abe8` | [View](https://explorer.testnet.arc.io/address/0xab7678c528f1d517d642c13e3fd97124a743abe8) |
+| v2 — マルチストア（非推奨） | `0x101c391d239a647d590d8493aae1dd5770f4a33a` | [View](https://explorer.testnet.arc.io/address/0x101c391d239a647d590d8493aae1dd5770f4a33a) |
 
 > Mainnet へのデプロイは未実施です。
 
@@ -176,7 +177,8 @@ Arc LuckyPass is a lottery-based platform for limited-edition merchandise and ev
 
 | Version | Address | Explorer |
 |---|---|---|
-| v2 — multi-store (current) | `0x101c391d239a647d590d8493aae1dd5770f4a33a` | [View](https://explorer.testnet.arc.io/address/0x101c391d239a647d590d8493aae1dd5770f4a33a) |
+| v3 — entry window + fixed deadline (current) | `0xab7678c528f1d517d642c13e3fd97124a743abe8` | [View](https://explorer.testnet.arc.io/address/0xab7678c528f1d517d642c13e3fd97124a743abe8) |
+| v2 — multi-store (deprecated) | `0x101c391d239a647d590d8493aae1dd5770f4a33a` | [View](https://explorer.testnet.arc.io/address/0x101c391d239a647d590d8493aae1dd5770f4a33a) |
 
 > Mainnet deployment: not yet deployed.
 

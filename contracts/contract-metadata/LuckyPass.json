@@ -1,10 +1,20 @@
 {
-  "contractAddress": "0x101c391d239a647d590d8493aae1dd5770f4a33a",
+  "contractAddress": "0xab7678c528f1d517d642c13e3fd97124a743abe8",
   "network": "ARC-TESTNET",
+  "deployerWalletId": "3c2464b2-8369-52e2-a782-800bbeca5396",
+  "contract_code_path": "/home/user/app/contracts/LuckyPass.sol",
+  "contract_compiled_code_path": "/home/user/app/contracts/out/LuckyPass.sol/LuckyPass.json",
   "contract_network_and_links": {
-    "Arc Testnet": "https://explorer.testnet.arc.io/address/0x101c391d239a647d590d8493aae1dd5770f4a33a"
+    "Arc Testnet": "https://explorer.testnet.arc.io/address/0xab7678c528f1d517d642c13e3fd97124a743abe8"
   },
   "contract_deployments": [
+    {
+      "chain": "Arc Testnet",
+      "address": "0xab7678c528f1d517d642c13e3fd97124a743abe8",
+      "explorerUrl": "https://explorer.testnet.arc.io/address/0xab7678c528f1d517d642c13e3fd97124a743abe8",
+      "txHash": "0xb2b3f2ac1eb47229ca17f0bb3c6667909fa56799c6f3f0047182f7f05dd80241",
+      "deployedAt": "2026-10-25T15:04:42.550Z"
+    },
     {
       "chain": "Arc Testnet",
       "address": "0x101c391d239a647d590d8493aae1dd5770f4a33a",
@@ -151,6 +161,21 @@
           "name": "maxEntrants",
           "type": "uint32",
           "internalType": "uint32"
+        },
+        {
+          "name": "entryOpenAt",
+          "type": "uint64",
+          "internalType": "uint64"
+        },
+        {
+          "name": "entryCloseAt",
+          "type": "uint64",
+          "internalType": "uint64"
+        },
+        {
+          "name": "fixedDeadlineAt",
+          "type": "uint64",
+          "internalType": "uint64"
         }
       ],
       "outputs": [
@@ -305,6 +330,21 @@
           "name": "maxEntrants",
           "type": "uint32",
           "internalType": "uint32"
+        },
+        {
+          "name": "entryOpenAt",
+          "type": "uint64",
+          "internalType": "uint64"
+        },
+        {
+          "name": "entryCloseAt",
+          "type": "uint64",
+          "internalType": "uint64"
+        },
+        {
+          "name": "fixedDeadlineAt",
+          "type": "uint64",
+          "internalType": "uint64"
         }
       ],
       "stateMutability": "view"
@@ -504,7 +544,7 @@
           "internalType": "bool"
         }
       ],
-      "stateMutability": "pure"
+      "stateMutability": "view"
     },
     {
       "type": "function",
@@ -608,6 +648,21 @@
           "name": "ticketsMinted",
           "type": "uint32",
           "internalType": "uint32"
+        },
+        {
+          "name": "entryOpenAt",
+          "type": "uint64",
+          "internalType": "uint64"
+        },
+        {
+          "name": "entryCloseAt",
+          "type": "uint64",
+          "internalType": "uint64"
+        },
+        {
+          "name": "fixedDeadlineAt",
+          "type": "uint64",
+          "internalType": "uint64"
         }
       ],
       "stateMutability": "view"
@@ -1621,6 +1676,16 @@
     },
     {
       "type": "error",
+      "name": "DeadlineAlreadyPassed",
+      "inputs": []
+    },
+    {
+      "type": "error",
+      "name": "DeadlineBeforeClose",
+      "inputs": []
+    },
+    {
+      "type": "error",
       "name": "DeadlineExpired",
       "inputs": []
     },
@@ -1771,6 +1836,21 @@
     },
     {
       "type": "error",
+      "name": "EntryAlreadyClosed",
+      "inputs": []
+    },
+    {
+      "type": "error",
+      "name": "EntryNotClosed",
+      "inputs": []
+    },
+    {
+      "type": "error",
+      "name": "EntryNotYetOpen",
+      "inputs": []
+    },
+    {
+      "type": "error",
       "name": "InsufficientVrfFee",
       "inputs": []
     },
@@ -1873,7 +1953,27 @@
     },
     {
       "type": "error",
+      "name": "PromotionAfterDeadline",
+      "inputs": []
+    },
+    {
+      "type": "error",
+      "name": "PromotionTooLate",
+      "inputs": []
+    },
+    {
+      "type": "error",
+      "name": "Soulbound",
+      "inputs": []
+    },
+    {
+      "type": "error",
       "name": "UnexpectedVrfCallback",
+      "inputs": []
+    },
+    {
+      "type": "error",
+      "name": "UsdcTransferFailed",
       "inputs": []
     },
     {

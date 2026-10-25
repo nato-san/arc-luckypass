@@ -24,6 +24,19 @@ const COORDINATOR_ABI = [
     outputs: [{ name: '', type: 'uint256' }],
     stateMutability: 'view',
   },
+  {
+    // quoteFeeAt lets callers supply an explicit baseFee — required off-chain because
+    // eth_call reports baseFeePerGas=0, which collapses quoteFee to minFee and causes
+    // the live requestDraw transaction to revert with IncorrectFee.
+    name: 'quoteFeeAt',
+    type: 'function',
+    inputs: [
+      { name: 'callbackGasLimit', type: 'uint32' },
+      { name: 'baseFee', type: 'uint256' },
+    ],
+    outputs: [{ name: '', type: 'uint256' }],
+    stateMutability: 'view',
+  },
 ] as const
 
 const CALLBACK_GAS = 120_000
@@ -57,15 +70,23 @@ function LotRow({ lotId }: LotRowProps) {
   const handleRequestDraw = async () => {
     if (!publicClient) { toast.error(t('op.errNetwork')); return }
     try {
+      // eth_call reports baseFeePerGas=0, so quoteFee() collapses to minFee and the
+      // live tx reverts with IncorrectFee. Fetch the latest block's actual baseFee
+      // and pass it to quoteFeeAt, then add a 30% buffer for base-fee movement
+      // between quote time and inclusion (EIP-1559 can rise 12.5% per block).
+      const block = await publicClient.getBlock({ blockTag: 'latest' })
+      const baseFee = block.baseFeePerGas ?? 0n
+      const baseFeeBuffered = (baseFee * 130n) / 100n
       const fee = await publicClient.readContract({
         address: VRF_COORDINATOR,
         abi: COORDINATOR_ABI,
-        functionName: 'quoteFee',
-        args: [CALLBACK_GAS],
+        functionName: 'quoteFeeAt',
+        args: [CALLBACK_GAS, baseFeeBuffered],
       })
-      const buffered = (fee * 120n) / 100n
-      toast.info(`${t('op.vrfFeeInfo')}: ${formatUnits(buffered, 18)} USDC ${t('op.vrfFeeBuffer')}`)
-      requestDraw.requestDraw(lotId, buffered)
+      // Add a small extra 5% on top of the already-buffered quote for safety
+      const value = (fee * 105n) / 100n
+      toast.info(`${t('op.vrfFeeInfo')}: ${formatUnits(value, 18)} USDC ${t('op.vrfFeeBuffer')}`)
+      requestDraw.requestDraw(lotId, value)
     } catch {
       toast.error(t('op.errVrfFee'))
     }

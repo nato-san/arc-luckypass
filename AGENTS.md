@@ -10,10 +10,12 @@
 | Version | Network | Address | Status |
 |---|---|---|---|
 | v1 (single-owner, deprecated) | Arc Testnet | `0x6ce25001fa6bf148454eb21edf251d603ba0fa5f` | Superseded |
-| v2 (multi-store, **active**) | Arc Testnet | `0x101c391d239a647d590d8493aae1dd5770f4a33a` | Active |
+| v2 (multi-store, deprecated) | Arc Testnet | `0x101c391d239a647d590d8493aae1dd5770f4a33a` | Superseded |
+| v3 (entry window + fixed deadline, **active**) | Arc Testnet | `0xab7678c528f1d517d642c13e3fd97124a743abe8` | Active |
 
-- Deploy tx (v2): `0x36969bf1c1f03d59aa6f7abba7d81e9b69e3aea109e6c7a133333a93a195309c`
-- Deployed: 2026-10-23
+- Deploy tx (v3): `0xb2b3f2ac1eb47229ca17f0bb3c6667909fa56799c6f3f0047182f7f05dd80241`
+- Deploy block (v3): `69049215`
+- Deployed: 2026-10-25
 - Platform Admin (initialOwner): `0x9e9f0C0aaE3D365FAcBa4ffbbf8d58Df792f5345`
 - Arc Studio deployer (no contract rights): `0x5B12Ce46C7194aD57d143bC22847224047b1Ef42`
 

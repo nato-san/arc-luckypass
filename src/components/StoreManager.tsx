@@ -26,8 +26,8 @@ import { useLocale } from '@/i18n/LocaleContext'
 
 const CHAIN_ID = arcTestnet.id
 
-// Block where LuckyPass v2 was deployed — getLogs lower bound.
-const DEPLOY_BLOCK = 68_705_407n
+// Block where LuckyPass v3 was deployed — getLogs lower bound.
+const DEPLOY_BLOCK = 69_049_215n
 
 // Blocks per getLogs request. Keep well within Arc Testnet RPC limits.
 const CHUNK_SIZE = 2_000n
