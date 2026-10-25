@@ -169,7 +169,7 @@ export default function App() {
                 {/* Testnet info */}
                 <div className="mt-8 p-4 bg-white rounded-xl border border-gray-100 text-xs text-gray-400 space-y-1">
                   <p className="font-medium text-gray-600">{t('home.testnetInfo')}</p>
-                  <p>{t('home.contract')}: <span className="font-mono">0x101c391d239a647d590d8493aae1dd5770f4a33a</span></p>
+                  <p>{t('home.contract')}: <span className="font-mono">0xab7678c528f1d517d642c13e3fd97124a743abe8</span></p>
                   <p>{t('home.randomness')}: D20DAO VRF (Arc Testnet Coordinator)</p>
                   <p>{t('home.chain')}: Arc Testnet (5042002)</p>
                 </div>
