@@ -1,0 +1,39 @@
+# ─── Environment & secrets ──────────────────────────────────────────────────
+.env
+.env.local
+.env.*.local
+.circle/
+**/recovery_file*.dat
+**/entity_secret*
+
+# ─── Node ────────────────────────────────────────────────────────────────────
+node_modules/
+dist/
+.cache/
+
+# ─── Foundry build artifacts ─────────────────────────────────────────────────
+contracts/out/
+contracts/cache/
+# Keep lib/ (Foundry dependencies) — committed so the repo is self-contained
+# If you prefer forge install workflow, add:  lib/
+
+# ─── Bun ─────────────────────────────────────────────────────────────────────
+# bun.lock is intentionally committed for reproducible installs
+
+# ─── Arc Studio internal ──────────────────────────────────────────────────────
+arc-studio-plans/
+docs/
+traces.jsonl
+console.jsonl
+
+# ─── OS / editor ─────────────────────────────────────────────────────────────
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# ─── Misc ────────────────────────────────────────────────────────────────────
+*.log
+*.local
