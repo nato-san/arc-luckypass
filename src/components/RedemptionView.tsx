@@ -9,7 +9,7 @@ import { LUCKY_PASS_ADDRESS } from '@/lib/luckypass-abi'
 import { useTicketInfo, useLot, useIsVenueOperator, useRedeem } from '@/hooks/useLuckyPass'
 import { useLocale } from '@/i18n/LocaleContext'
 import { toast } from 'sonner'
-import jsQR from 'jsqr'
+import { BrowserQRCodeReader } from '@zxing/browser'
 
 const CHAIN_ID = arcTestnet.id
 const REDEMPTION_EXPIRY = 300 // must match contract
@@ -35,9 +35,8 @@ export function RedemptionView({ onBack }: RedemptionViewProps) {
   const [nowSeconds, setNowSeconds] = useState(() => Math.floor(Date.now() / 1000))
 
   const videoRef = useRef<HTMLVideoElement>(null)
-  const canvasRef = useRef<HTMLCanvasElement>(null)
-  const streamRef = useRef<MediaStream | null>(null)
-  const scanLoopRef = useRef<number | null>(null)
+  const readerRef = useRef<BrowserQRCodeReader | null>(null)
+  const controlsRef = useRef<{ stop: () => void } | null>(null)
 
   const { data: ticketInfo, refetch: refetchTicket } = useTicketInfo(tokenId)
   const { data: lot } = useLot(ticketInfo ? ticketInfo[0] : undefined)
@@ -55,13 +54,9 @@ export function RedemptionView({ onBack }: RedemptionViewProps) {
   // ── Camera management ──────────────────────────────────────────────────────
 
   const stopCamera = useCallback(() => {
-    if (scanLoopRef.current !== null) {
-      cancelAnimationFrame(scanLoopRef.current)
-      scanLoopRef.current = null
-    }
-    if (streamRef.current) {
-      streamRef.current.getTracks().forEach(t => t.stop())
-      streamRef.current = null
+    if (controlsRef.current) {
+      controlsRef.current.stop()
+      controlsRef.current = null
     }
     setIsScanning(false)
   }, [])
@@ -73,60 +68,49 @@ export function RedemptionView({ onBack }: RedemptionViewProps) {
       return () => { stopCamera() }
     }
     let cancelled = false
-    navigator.mediaDevices.getUserMedia({ video: { facingMode: { ideal: 'environment' } } })
-      .then(stream => {
-        if (cancelled) { stream.getTracks().forEach(t => t.stop()); return }
-        streamRef.current = stream
-        if (videoRef.current) {
-          videoRef.current.srcObject = stream
-          void videoRef.current.play()
+    const reader = new BrowserQRCodeReader()
+    readerRef.current = reader
+
+    reader.decodeFromConstraints(
+      { video: { facingMode: { ideal: 'environment' } } },
+      videoRef.current!,
+      (result, err, controls) => {
+        if (cancelled) { controls.stop(); return }
+        if (!controlsRef.current) {
+          controlsRef.current = controls
+          setIsScanning(true)
         }
-        setIsScanning(true)
-      })
-      .catch(() => {
-        if (!cancelled) setCameraError(t('redeem.scanError'))
-      })
+        if (result) {
+          const text = result.getText()
+          const payload = parseSignedQrPayload(text)
+          if (
+            payload &&
+            payload.contractAddress.toLowerCase() === LUCKY_PASS_ADDRESS.toLowerCase() &&
+            payload.chainId === CHAIN_ID
+          ) {
+            controls.stop()
+            controlsRef.current = null
+            setIsScanning(false)
+            setScannedPayload(payload)
+            setTokenId(BigInt(payload.tokenId))
+            setStep('confirm')
+          }
+        }
+        // err here is just "no QR found yet" — ignore NotFoundException
+        if (err && !err.message?.includes('NotFoundException') && !cancelled) {
+          setCameraError(t('redeem.scanError'))
+        }
+      }
+    ).catch(() => {
+      if (!cancelled) setCameraError(t('redeem.scanError'))
+    })
+
     return () => {
       cancelled = true
       stopCamera()
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [inputMode, step])
-
-  // QR scan loop
-  useEffect(() => {
-    if (!isScanning) return
-    const tick = () => {
-      const video = videoRef.current
-      const canvas = canvasRef.current
-      if (!video || !canvas || video.readyState < 2) {
-        scanLoopRef.current = requestAnimationFrame(tick)
-        return
-      }
-      canvas.width = video.videoWidth
-      canvas.height = video.videoHeight
-      const ctx = canvas.getContext('2d')
-      if (!ctx) { scanLoopRef.current = requestAnimationFrame(tick); return }
-      ctx.drawImage(video, 0, 0, canvas.width, canvas.height)
-      const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height)
-      const code = jsQR(imageData.data, imageData.width, imageData.height)
-      if (code) {
-        const payload = parseSignedQrPayload(code.data)
-        if (payload && payload.contractAddress.toLowerCase() === LUCKY_PASS_ADDRESS.toLowerCase() && payload.chainId === CHAIN_ID) {
-          stopCamera()
-          setScannedPayload(payload)
-          setTokenId(BigInt(payload.tokenId))
-          setStep('confirm')
-          return
-        }
-      }
-      scanLoopRef.current = requestAnimationFrame(tick)
-    }
-    scanLoopRef.current = requestAnimationFrame(tick)
-    return () => {
-      if (scanLoopRef.current !== null) cancelAnimationFrame(scanLoopRef.current)
-    }
-  }, [isScanning, stopCamera])
 
   // ── Manual lookup ──────────────────────────────────────────────────────────
 
@@ -246,7 +230,6 @@ export function RedemptionView({ onBack }: RedemptionViewProps) {
                     <p className="text-xs text-gray-500">{t('redeem.scanHint')}</p>
                     <div className="relative w-full aspect-square bg-black rounded-xl overflow-hidden">
                       <video ref={videoRef} className="w-full h-full object-cover" playsInline muted />
-                      <canvas ref={canvasRef} className="hidden" />
                       {isScanning && (
                         <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
                           <div className="w-48 h-48 border-2 border-white/60 rounded-xl" />
