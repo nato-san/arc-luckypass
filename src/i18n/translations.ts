@@ -115,7 +115,7 @@ export const translations = {
 
   // ─── Ticket QR ────────────────────────────────────────────────────────────
   'qr.successTitle':    { ja: '購入完了！',                          en: 'Purchase Complete!' },
-  'qr.instruction':     { ja: 'このQRコードを会場スタッフに提示してください。\n引換時にウォレット署名が必要です。', en: 'Show this QR code to venue staff.\nYour wallet signature will be required at redemption.' },
+  'qr.instruction':     { ja: '下の「署名してQRを生成」を押して、\n会場スタッフにQRコードを提示してください。', en: 'Tap "Sign & Generate QR" below,\nthen show the QR code to venue staff.' },
   'qr.ticketNumber':    { ja: 'チケット番号',   en: 'Ticket #' },
   'qr.purchaseAmount':  { ja: '購入金額',       en: 'Amount paid' },
   'qr.purchaseTx':      { ja: '購入Tx',         en: 'Purchase Tx' },
@@ -123,11 +123,24 @@ export const translations = {
   'qr.redeemed':        { ja: '引換済み',        en: 'Redeemed' },
   'qr.unused':          { ja: '未使用',          en: 'Unused' },
   'qr.saveButton':      { ja: 'QRコードを保存', en: 'Save QR Code' },
+  'qr.signButton':      { ja: '署名してQRを生成',    en: 'Sign & Generate QR' },
+  'qr.signingButton':   { ja: '署名中...',           en: 'Signing...' },
+  'qr.signedTitle':     { ja: '署名済みQR（5分有効）', en: 'Signed QR (valid 5 min)' },
+  'qr.expiredBadge':    { ja: '有効期限切れ — 再署名してください', en: 'Expired — please sign again' },
+  'qr.expiresIn':       { ja: '残り',           en: 'Expires in' },
+  'qr.expiresUnit':     { ja: '秒',             en: 's' },
+  'qr.signHint':        { ja: 'ウォレットで署名するとQRが生成されます。署名はこのデバイス内のみで使用され、送信されません。', en: 'Sign with your wallet to generate the QR. The signature stays on this device only.' },
+  'qr.alreadyRedeemed': { ja: 'このチケットは引換済みです', en: 'This ticket has already been redeemed' },
 
   // ─── Redemption view ──────────────────────────────────────────────────────
   'redeem.title':           { ja: 'チケット引換',                     en: 'Ticket Redemption' },
   'redeem.subtitle':        { ja: '会場スタッフ専用画面',              en: 'Venue Staff Only' },
   'redeem.connectPrompt':   { ja: '会場スタッフウォレットを接続してください', en: 'Please connect a venue staff wallet' },
+  'redeem.scanTab':         { ja: 'QRをスキャン',   en: 'Scan QR' },
+  'redeem.manualTab':       { ja: '手動入力',        en: 'Manual Entry' },
+  'redeem.scanHint':        { ja: 'カメラを購入者のQRコードに向けてください', en: 'Point the camera at the buyer\'s QR code' },
+  'redeem.scanError':       { ja: 'カメラへのアクセスを許可してください', en: 'Please allow camera access' },
+  'redeem.scanning':        { ja: 'スキャン中...', en: 'Scanning...' },
   'redeem.tokenIdLabel':    { ja: 'チケット番号（Token ID）',          en: 'Ticket Number (Token ID)' },
   'redeem.tokenIdPlaceholder': { ja: '例: 1', en: 'e.g. 1' },
   'redeem.lookupButton':    { ja: 'チケットを確認',                    en: 'Look Up Ticket' },
