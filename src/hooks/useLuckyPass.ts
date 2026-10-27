@@ -68,40 +68,60 @@ export function useSbtBalance(address: `0x${string}` | undefined) {
 }
 
 /**
- * For a winner address on a lot, returns:
- *   { isPaid, tokenId } where tokenId is the first SBT token minted to that address
- * Strategy: isWinner=true and balanceOf>0 confirms purchase.
- * To find the exact tokenId for this lot we check tokenLot(1) up to ticketsMinted.
- * For most use-cases a single lot with a single winner slot is sufficient to check
- * tokenId 1 directly; we do a batch read for up to `ticketsMinted` tokens.
+ * For a winner address on a lot, returns whether they have already purchased
+ * an SBT for THIS specific lot, and which tokenId they own.
+ *
+ * Strategy: batch-read ownerOf(1..ticketsMinted) AND tokenLot(1..ticketsMinted).
+ * A token belongs to the connected address AND this lot when both conditions hold:
+ *   ownerOf(tokenId) === address  AND  tokenLot(tokenId) === lotId
+ * This prevents false-positives from SBTs belonging to a different lot.
  */
 export function useWinnerPurchaseState(
   lotId: bigint | undefined,
   address: `0x${string}` | undefined,
   ticketsMinted: number,
 ) {
-  // Build a batch: ownerOf(1)..ownerOf(ticketsMinted)
   const tokenIds = Array.from({ length: ticketsMinted }, (_, i) => BigInt(i + 1))
+  const enabled = !!address && ticketsMinted > 0 && lotId !== undefined
+
+  // Batch: ownerOf + tokenLot for each minted token
   const { data, isLoading, isError, refetch } = useReadContracts({
-    contracts: tokenIds.map(tokenId => ({
-      address: LUCKY_PASS_ADDRESS,
-      abi: LUCKY_PASS_ABI,
-      functionName: 'ownerOf' as const,
-      args: [tokenId] as const,
-      chainId: CHAIN_ID,
-    })),
-    query: { enabled: !!address && ticketsMinted > 0 && lotId !== undefined },
+    contracts: tokenIds.flatMap(tokenId => [
+      {
+        address: LUCKY_PASS_ADDRESS,
+        abi: LUCKY_PASS_ABI,
+        functionName: 'ownerOf' as const,
+        args: [tokenId] as const,
+        chainId: CHAIN_ID,
+      },
+      {
+        address: LUCKY_PASS_ADDRESS,
+        abi: LUCKY_PASS_ABI,
+        functionName: 'tokenLot' as const,
+        args: [tokenId] as const,
+        chainId: CHAIN_ID,
+      },
+    ]),
+    query: { enabled },
   })
 
-  // Find the tokenId owned by address that belongs to this lot
+  /**
+   * Find the tokenId where:
+   *   ownerOf(tokenId) === address  AND  tokenLot(tokenId) === lotId
+   * Results are interleaved: index 2*i = ownerOf result, 2*i+1 = tokenLot result.
+   */
   const ownedTokenId: bigint | null = (() => {
-    if (!data || !address) return null
+    if (!data || !address || !lotId) return null
     for (let i = 0; i < tokenIds.length; i++) {
-      const result = data[i]
-      if (result?.status === 'success' && typeof result.result === 'string' &&
-          result.result.toLowerCase() === address.toLowerCase()) {
-        return tokenIds[i]
-      }
+      const ownerResult = data[2 * i]
+      const lotResult   = data[2 * i + 1]
+      const ownerMatch = ownerResult?.status === 'success' &&
+        typeof ownerResult.result === 'string' &&
+        ownerResult.result.toLowerCase() === address.toLowerCase()
+      const lotMatch = lotResult?.status === 'success' &&
+        typeof lotResult.result === 'bigint' &&
+        lotResult.result === lotId
+      if (ownerMatch && lotMatch) return tokenIds[i]
     }
     return null
   })()

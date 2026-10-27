@@ -172,12 +172,32 @@ export function PurchaseFlow({ lotId, onBack }: PurchaseFlowProps) {
   }
 
   const handlePurchase = async () => {
-    // Final onchain check before sending — prevents duplicate purchase
-    await refetchPurchaseState()
-    // isAlreadyPurchased re-evaluates after refetch; read the latest value
-    // by checking the hook result. We guard with a small delay to allow
-    // React state to settle — the button is disabled during loading anyway.
-    if (isAlreadyPurchased) {
+    // Fetch the latest onchain state and evaluate it directly from the Promise
+    // result — never rely on React re-render to update isAlreadyPurchased first.
+    const fresh = await refetchPurchaseState()
+    // fresh.data is the raw useReadContracts array; derive isPurchased from it.
+    const freshData = fresh.data
+    let freshlyPurchased = false
+    if (freshData && address && lotId !== undefined) {
+      // Same interleaved layout as useWinnerPurchaseState: 2*i = ownerOf, 2*i+1 = tokenLot
+      const count = freshData.length / 2
+      for (let i = 0; i < count; i++) {
+        const ownerR = freshData[2 * i]
+        const lotR   = freshData[2 * i + 1]
+        if (
+          ownerR?.status === 'success' &&
+          typeof ownerR.result === 'string' &&
+          ownerR.result.toLowerCase() === address.toLowerCase() &&
+          lotR?.status === 'success' &&
+          typeof lotR.result === 'bigint' &&
+          lotR.result === lotId
+        ) {
+          freshlyPurchased = true
+          break
+        }
+      }
+    }
+    if (freshlyPurchased) {
       toast.error(t('purchase.errAlready'))
       return
     }
