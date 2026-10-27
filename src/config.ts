@@ -36,11 +36,13 @@ const connectors = [
           metadata: {
             name: APP_NAME,
             description: '限定アイテム抽選 — Lottery-based ticket sales on Arc',
-            url: typeof window !== 'undefined' ? window.location.origin : 'https://studio.arc.io',
-            icons: [],
+            // Use the canonical Vercel URL so WalletConnect relay can verify the origin.
+            // Falls back to current origin in other environments (Arc Studio preview, localhost).
+            url: (import.meta.env.VITE_APP_URL as string | undefined) ?? (typeof window !== 'undefined' ? window.location.origin : 'https://arc-luckypass.vercel.app'),
+            icons: ['https://arc-luckypass.vercel.app/favicon.ico'],
           },
-          // showQrModal: false — ConnectKit がモーダル管理を担当する。
-          // true にすると WC リレー切断時にモーダルが自動再表示されるループが起きる。
+          // showQrModal: false — ConnectKit manages the modal.
+          // true would cause the WC relay to re-open the modal on reconnect.
           showQrModal: false,
         }),
       ]

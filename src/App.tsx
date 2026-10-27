@@ -79,13 +79,13 @@ function TabBar({ view, setView, t }: TabBarProps) {
   ]
 
   return (
-    <div className="bg-white border-b border-gray-100">
-      <div className="max-w-2xl mx-auto px-4 flex gap-0">
+    <div className="bg-white border-b border-gray-100 overflow-x-auto">
+      <div className="max-w-2xl mx-auto px-2 flex gap-0 min-w-0">
         {tabs.map(tab => (
           <button
             key={tab.id}
             onClick={() => setView(tab.id)}
-            className={`flex items-center gap-1.5 px-4 py-3 text-sm transition-colors whitespace-nowrap ${view === tab.id || (view === 'purchase' && tab.id === 'lots') ? active : inactive}`}
+            className={`flex items-center gap-1 sm:gap-1.5 px-2 sm:px-4 py-3 text-xs sm:text-sm transition-colors whitespace-nowrap shrink-0 ${view === tab.id || (view === 'purchase' && tab.id === 'lots') ? active : inactive}`}
           >
             {tab.icon}
             {tab.label}
@@ -127,10 +127,11 @@ export default function App() {
             <div className="w-7 h-7 rounded-lg bg-gray-900 flex items-center justify-center">
               <Ticket size={14} className="text-white" />
             </div>
-            <span>Arc LuckyPass</span>
+            <span className="hidden sm:inline">Arc LuckyPass</span>
+            <span className="sm:hidden">LuckyPass</span>
           </button>
 
-          <div className="flex items-center gap-1.5">
+          <div className="flex items-center gap-1 sm:gap-1.5 shrink-0">
             <LanguageToggle />
             <ConnectKitButton />
           </div>
