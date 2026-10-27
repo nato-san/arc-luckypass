@@ -50,10 +50,15 @@ const connectors = [
 ]
 
 export const config = createConfig({
-  chains: [arcTestnet, mainnet], // mainnet needed for ENS resolution
+  // mainnet is listed first so WalletConnect uses it as the required namespace
+  // when establishing a mobile session. MetaMask mobile recognises mainnet and
+  // accepts the session; ChainGuard then prompts the user to switch to Arc Testnet
+  // before any transaction is allowed. All write hooks have chainId: arcTestnet.id
+  // so no transaction can be sent on mainnet regardless of the connected chain.
+  chains: [mainnet, arcTestnet],
   connectors,
   transports: {
     [arcTestnet.id]: http(ARC_TESTNET_RPC),
-    [mainnet.id]: http(), // ENS resolution uses mainnet
+    [mainnet.id]: http(), // ENS resolution + WalletConnect required namespace
   },
 })
