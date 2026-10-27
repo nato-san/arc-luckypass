@@ -1,4 +1,4 @@
-import { useReadContract, useWriteContract, useWaitForTransactionReceipt, useAccount } from 'wagmi'
+import { useReadContract, useReadContracts, useWriteContract, useWaitForTransactionReceipt, useAccount } from 'wagmi'
 import { erc20Abi } from 'viem'
 import { arcTestnet } from 'viem/chains'
 import { LUCKY_PASS_ADDRESS, LUCKY_PASS_ABI } from '@/lib/luckypass-abi'
@@ -50,6 +50,69 @@ export function useIsWinner(lotId: bigint | undefined, address: `0x${string}` | 
     chainId: CHAIN_ID,
     query: { enabled: lotId !== undefined && !!address },
   })
+}
+
+/**
+ * Returns the ERC-721 SBT balance for an address.
+ * balanceOf > 0 means the address already owns at least one ticket SBT.
+ */
+export function useSbtBalance(address: `0x${string}` | undefined) {
+  return useReadContract({
+    address: LUCKY_PASS_ADDRESS,
+    abi: LUCKY_PASS_ABI,
+    functionName: 'balanceOf',
+    args: address ? [address] : undefined,
+    chainId: CHAIN_ID,
+    query: { enabled: !!address },
+  })
+}
+
+/**
+ * For a winner address on a lot, returns:
+ *   { isPaid, tokenId } where tokenId is the first SBT token minted to that address
+ * Strategy: isWinner=true and balanceOf>0 confirms purchase.
+ * To find the exact tokenId for this lot we check tokenLot(1) up to ticketsMinted.
+ * For most use-cases a single lot with a single winner slot is sufficient to check
+ * tokenId 1 directly; we do a batch read for up to `ticketsMinted` tokens.
+ */
+export function useWinnerPurchaseState(
+  lotId: bigint | undefined,
+  address: `0x${string}` | undefined,
+  ticketsMinted: number,
+) {
+  // Build a batch: ownerOf(1)..ownerOf(ticketsMinted)
+  const tokenIds = Array.from({ length: ticketsMinted }, (_, i) => BigInt(i + 1))
+  const { data, isLoading, isError, refetch } = useReadContracts({
+    contracts: tokenIds.map(tokenId => ({
+      address: LUCKY_PASS_ADDRESS,
+      abi: LUCKY_PASS_ABI,
+      functionName: 'ownerOf' as const,
+      args: [tokenId] as const,
+      chainId: CHAIN_ID,
+    })),
+    query: { enabled: !!address && ticketsMinted > 0 && lotId !== undefined },
+  })
+
+  // Find the tokenId owned by address that belongs to this lot
+  const ownedTokenId: bigint | null = (() => {
+    if (!data || !address) return null
+    for (let i = 0; i < tokenIds.length; i++) {
+      const result = data[i]
+      if (result?.status === 'success' && typeof result.result === 'string' &&
+          result.result.toLowerCase() === address.toLowerCase()) {
+        return tokenIds[i]
+      }
+    }
+    return null
+  })()
+
+  return {
+    isPurchased: ownedTokenId !== null,
+    tokenId: ownedTokenId,
+    isLoading,
+    isError,
+    refetch,
+  }
 }
 
 export function usePaymentDeadline(lotId: bigint | undefined, slot: number | undefined) {

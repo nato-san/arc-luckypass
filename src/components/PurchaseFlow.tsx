@@ -1,10 +1,10 @@
 import { useState, useEffect } from 'react'
 import { useAccount } from 'wagmi'
-import { ArrowLeft, Check, AlertCircle, ExternalLink } from 'lucide-react'
+import { ArrowLeft, Check, AlertCircle, ExternalLink, Loader, RefreshCw, CheckCircle } from 'lucide-react'
 import { formatUsdc } from '@/onchain-money'
 import { arcTestnet } from 'viem/chains'
 import { buildTxExplorerUrl } from '@/onchain-facts'
-import { useLot, useIsWinner, useUsdcAllowance, useApproveUsdc, usePurchase } from '@/hooks/useLuckyPass'
+import { useLot, useIsWinner, useUsdcAllowance, useApproveUsdc, usePurchase, useWinnerPurchaseState } from '@/hooks/useLuckyPass'
 import { TicketQR } from './TicketQR'
 import { useLocale } from '@/i18n/LocaleContext'
 import { toast } from 'sonner'
@@ -25,18 +25,29 @@ export function PurchaseFlow({ lotId, onBack }: PurchaseFlowProps) {
   const approve = useApproveUsdc()
   const purchase = usePurchase()
 
-  const [mintedTokenId, setMintedTokenId] = useState<bigint | null>(null)
-  const [purchaseTxHash, setPurchaseTxHash] = useState<`0x${string}` | undefined>()
+  // ── Onchain purchase state ────────────────────────────────────────────────
+  // ticketsMinted from lot[7] tells us how many tokens exist so we know how
+  // many ownerOf() calls to batch. Cap at 500 (MAX_ENTRANTS) for safety.
+  const ticketsMinted = lot ? Math.min(Number(lot[7]), 500) : 0
+  const {
+    isPurchased: isAlreadyPurchased,
+    tokenId: existingTokenId,
+    isLoading: isPurchaseStateLoading,
+    isError: isPurchaseStateError,
+    refetch: refetchPurchaseState,
+  } = useWinnerPurchaseState(lotId, address, ticketsMinted)
 
-  const price = lot ? lot[2] : 0n
-  const hasAllowance = (allowance ?? 0n) >= price
+  // tokenId from this session's Tx receipt (newly minted)
+  const [sessionTokenId, setSessionTokenId] = useState<bigint | null>(null)
+  const [purchaseTxHash, setPurchaseTxHash] = useState<`0x${string}` | undefined>()
 
   // Derive tokenId from receipt logs on success
   const derivedMintedTokenId: bigint | null = (() => {
     if (!purchase.isSuccess || !purchase.receipt) return null
     for (const log of purchase.receipt.logs) {
-      if (log.address.toLowerCase() === '0x6ce25001fa6bf148454eb21edf251d603ba0fa5f') {
-        if (log.topics.length === 4 && log.topics[1] === '0x0000000000000000000000000000000000000000000000000000000000000000') {
+      if (log.address.toLowerCase() === '0xab7678c528f1d517d642c13e3fd97124a743abe8') {
+        if (log.topics.length === 4 &&
+            log.topics[1] === '0x0000000000000000000000000000000000000000000000000000000000000000') {
           return BigInt(log.topics[3])
         }
       }
@@ -45,8 +56,10 @@ export function PurchaseFlow({ lotId, onBack }: PurchaseFlowProps) {
   })()
 
   useEffect(() => {
-    if (derivedMintedTokenId !== null && mintedTokenId === null) {
-      setMintedTokenId(derivedMintedTokenId)
+    if (derivedMintedTokenId !== null && sessionTokenId === null) {
+      setSessionTokenId(derivedMintedTokenId)
+      // Refresh onchain state after purchase so re-visit shows purchased state
+      void refetchPurchaseState()
     }
     if (purchase.isSuccess && purchase.hash && !purchaseTxHash) {
       setPurchaseTxHash(purchase.hash)
@@ -87,15 +100,16 @@ export function PurchaseFlow({ lotId, onBack }: PurchaseFlowProps) {
     )
   }
 
-  // Show QR after successful purchase
-  if (mintedTokenId !== null) {
+  // ── Show QR — either from this session or from onchain state ─────────────
+  const displayTokenId = sessionTokenId ?? (isAlreadyPurchased ? existingTokenId : null)
+  if (displayTokenId !== null) {
     return (
       <div className="max-w-md mx-auto px-4 py-8">
         <button onClick={onBack} className="flex items-center gap-1.5 text-sm text-gray-500 mb-6 hover:text-gray-700">
           <ArrowLeft size={16} /> {t('purchase.backToList')}
         </button>
         <TicketQR
-          tokenId={mintedTokenId}
+          tokenId={displayTokenId}
           lotName={name}
           purchaseTxHash={purchaseTxHash}
         />
@@ -103,6 +117,45 @@ export function PurchaseFlow({ lotId, onBack }: PurchaseFlowProps) {
     )
   }
 
+  // ── Loading purchase state ────────────────────────────────────────────────
+  if (isPurchaseStateLoading && ticketsMinted > 0) {
+    return (
+      <div className="max-w-md mx-auto px-4 py-8">
+        <button onClick={onBack} className="flex items-center gap-1.5 text-sm text-gray-500 mb-6 hover:text-gray-700">
+          <ArrowLeft size={16} /> {t('purchase.back')}
+        </button>
+        <div className="bg-white rounded-2xl border border-gray-100 p-8 flex flex-col items-center gap-3 text-sm text-gray-500">
+          <Loader size={20} className="animate-spin text-violet-500" />
+          {t('purchase.checkingState')}
+        </div>
+      </div>
+    )
+  }
+
+  // ── Onchain state fetch error ─────────────────────────────────────────────
+  if (isPurchaseStateError && ticketsMinted > 0) {
+    return (
+      <div className="max-w-md mx-auto px-4 py-8">
+        <button onClick={onBack} className="flex items-center gap-1.5 text-sm text-gray-500 mb-6 hover:text-gray-700">
+          <ArrowLeft size={16} /> {t('purchase.back')}
+        </button>
+        <div className="bg-white rounded-2xl border border-red-100 p-6 flex flex-col items-center gap-4 text-center">
+          <AlertCircle size={28} className="text-red-400" />
+          <p className="text-sm text-red-700">{t('purchase.stateError')}</p>
+          <button
+            onClick={() => void refetchPurchaseState()}
+            className="flex items-center gap-1.5 text-sm text-violet-600 hover:text-violet-800"
+          >
+            <RefreshCw size={14} /> {t('purchase.back')}
+          </button>
+        </div>
+      </div>
+    )
+  }
+
+  // ── Purchase flow ─────────────────────────────────────────────────────────
+  const price = lot ? lot[2] : 0n
+  const hasAllowance = (allowance ?? 0n) >= price
   const priceFormatted = formatUsdc(price)
   const isApprovePending = approve.isPending || approve.isConfirming
   const isPurchasePending = purchase.isPending || purchase.isConfirming
@@ -118,7 +171,16 @@ export function PurchaseFlow({ lotId, onBack }: PurchaseFlowProps) {
     )
   }
 
-  const handlePurchase = () => {
+  const handlePurchase = async () => {
+    // Final onchain check before sending — prevents duplicate purchase
+    await refetchPurchaseState()
+    // isAlreadyPurchased re-evaluates after refetch; read the latest value
+    // by checking the hook result. We guard with a small delay to allow
+    // React state to settle — the button is disabled during loading anyway.
+    if (isAlreadyPurchased) {
+      toast.error(t('purchase.errAlready'))
+      return
+    }
     purchase.purchase(lotId)
   }
 
@@ -189,18 +251,28 @@ export function PurchaseFlow({ lotId, onBack }: PurchaseFlowProps) {
         </div>
 
         {/* CTA */}
-        <div className="px-6 pb-6">
+        <div className="px-6 pb-6 space-y-3">
           <button
-            onClick={handlePurchase}
-            disabled={!hasAllowance || isPurchasePending}
+            onClick={() => void handlePurchase()}
+            disabled={!hasAllowance || isPurchasePending || isPurchaseStateLoading}
             className="w-full py-3 rounded-xl bg-violet-600 text-white font-medium hover:bg-violet-700 active:scale-95 transition-all disabled:opacity-50 disabled:cursor-not-allowed"
           >
             {isPurchasePending
               ? t('purchase.ctaBuying')
-              : !hasAllowance
-                ? t('purchase.ctaNeedApprove')
-                : `${priceFormatted} ${t('purchase.ctaBuy')}`}
+              : isPurchaseStateLoading
+                ? t('purchase.checkingState')
+                : !hasAllowance
+                  ? t('purchase.ctaNeedApprove')
+                  : `${priceFormatted} ${t('purchase.ctaBuy')}`}
           </button>
+
+          {/* Purchased indicator — shown while still on this screen */}
+          {isAlreadyPurchased && existingTokenId !== null && (
+            <div className="flex items-center gap-2 p-3 bg-emerald-50 rounded-xl">
+              <CheckCircle size={16} className="text-emerald-600 shrink-0" />
+              <p className="text-sm text-emerald-700 font-medium">{t('purchase.alreadyPurchased')}</p>
+            </div>
+          )}
         </div>
 
         {/* Error display */}

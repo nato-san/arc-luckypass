@@ -107,6 +107,11 @@ export const translations = {
   'purchase.errDeadline':     { ja: '購入期限が切れています',        en: 'Purchase deadline has expired' },
   'purchase.errAlready':      { ja: 'すでに購入済みです',           en: 'Already purchased' },
   'purchase.errGeneric':      { ja: 'エラー',                      en: 'Error' },
+  'purchase.alreadyPurchased':{ ja: '購入済み・支払い完了',          en: 'Purchased — payment complete' },
+  'purchase.alreadyDesc':     { ja: 'このロットのチケットはすでに発行されています', en: 'A ticket for this lot has already been issued' },
+  'purchase.viewTicket':      { ja: 'チケットのQRを表示する',        en: 'View ticket QR' },
+  'purchase.checkingState':   { ja: '購入状態を確認中...',           en: 'Checking purchase status...' },
+  'purchase.stateError':      { ja: 'オンチェーン状態の取得に失敗しました。再読み込みしてください', en: 'Failed to load onchain state. Please reload.' },
 
   // Approve toast
   'toast.approveLoading': { ja: '承認処理中...',    en: 'Approving...' },
