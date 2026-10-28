@@ -10,6 +10,7 @@ import { useTicketInfo, useLot, useIsVenueOperator, useRedeem } from '@/hooks/us
 import { useLocale } from '@/i18n/LocaleContext'
 import { toast } from 'sonner'
 import { BrowserQRCodeReader } from '@zxing/browser'
+import { NotFoundException, ChecksumException, FormatException } from '@zxing/library'
 
 const CHAIN_ID = arcTestnet.id
 const REDEMPTION_EXPIRY = 300 // must match contract
@@ -71,6 +72,7 @@ export function RedemptionView({ onBack }: RedemptionViewProps) {
     const reader = new BrowserQRCodeReader()
     readerRef.current = reader
 
+    console.debug('[QR] decodeFromConstraints starting, videoRef:', !!videoRef.current)
     reader.decodeFromConstraints(
       { video: { facingMode: { ideal: 'environment' } } },
       videoRef.current!,
@@ -79,30 +81,48 @@ export function RedemptionView({ onBack }: RedemptionViewProps) {
         if (!controlsRef.current) {
           controlsRef.current = controls
           setIsScanning(true)
+          console.debug('[QR] camera stream started, scanning...')
         }
         if (result) {
           const text = result.getText()
+          console.debug('[QR] decoded text length:', text.length)
           const payload = parseSignedQrPayload(text)
           if (
             payload &&
             payload.contractAddress.toLowerCase() === LUCKY_PASS_ADDRESS.toLowerCase() &&
             payload.chainId === CHAIN_ID
           ) {
+            console.debug('[QR] valid payload found, tokenId:', payload.tokenId)
             controls.stop()
             controlsRef.current = null
             setIsScanning(false)
             setScannedPayload(payload)
             setTokenId(BigInt(payload.tokenId))
             setStep('confirm')
+          } else {
+            console.debug('[QR] decoded but payload mismatch (wrong contract or chain)')
           }
         }
-        // err here is just "no QR found yet" — ignore NotFoundException
-        if (err && !err.message?.includes('NotFoundException') && !cancelled) {
-          setCameraError(t('redeem.scanError'))
+        // NotFoundException / ChecksumException / FormatException are normal per-frame
+        // "no QR found" signals — do NOT treat them as fatal camera errors.
+        // Use instanceof (not message string) because @zxing Exception.message is undefined.
+        if (err) {
+          const isScanNoise = err instanceof NotFoundException
+            || err instanceof ChecksumException
+            || err instanceof FormatException
+          if (!isScanNoise && !cancelled) {
+            console.error('[QR] fatal scan error:', err.constructor?.name, err.message)
+            setCameraError(t('redeem.scanError'))
+          }
         }
       }
-    ).catch(() => {
-      if (!cancelled) setCameraError(t('redeem.scanError'))
+    ).catch((e: unknown) => {
+      if (!cancelled) {
+        const name = e instanceof Error ? e.name : String(e)
+        const msg  = e instanceof Error ? e.message : ''
+        console.error('[QR] getUserMedia/startup error:', name, msg)
+        setCameraError(t('redeem.scanError'))
+      }
     })
 
     return () => {
