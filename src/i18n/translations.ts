@@ -173,7 +173,9 @@ export const translations = {
   'redeem.errAlready':      { ja: 'このチケットはすでに引換済みです。', en: 'This ticket has already been redeemed.' },
   'redeem.errNonce':        { ja: 'ノンスが一致しません。ページを更新してください。', en: 'Nonce mismatch. Please refresh the page.' },
   'redeem.errSig':          { ja: '署名が無効です。チケット保持者のウォレットで署名してください。', en: 'Invalid signature. Please sign with the ticket holder\'s wallet.' },
+  'redeem.errNotOp':        { ja: '会場スタッフ権限がありません。オーナーに登録を依頼してください。', en: 'You are not registered as a venue operator for this lot.' },
   'redeem.errGeneric':      { ja: 'エラー',                           en: 'Error' },
+  'redeem.simFailed':       { ja: '引換の事前検証に失敗しました。再度お試しください。', en: 'Pre-flight check failed. Please try again.' },
 
   // Redeem toasts
   'toast.redeemLoading': { ja: '引換処理中...',    en: 'Redeeming...' },

@@ -1,11 +1,12 @@
 import { useState, useRef, useEffect, useCallback } from 'react'
-import { useAccount } from 'wagmi'
+import { useAccount, usePublicClient } from 'wagmi'
 import { ArrowLeft, Shield, CheckCircle, XCircle, Loader, Camera, Keyboard } from 'lucide-react'
 import { arcTestnet } from 'viem/chains'
+import { ContractFunctionRevertedError } from 'viem'
 import { buildTxExplorerUrl } from '@/onchain-facts'
 import { parseSignedQrPayload, shortHash, shortAddress } from '@/lib/redemption-challenge'
 import type { SignedQrPayload } from '@/lib/redemption-challenge'
-import { LUCKY_PASS_ADDRESS } from '@/lib/luckypass-abi'
+import { LUCKY_PASS_ADDRESS, LUCKY_PASS_ABI } from '@/lib/luckypass-abi'
 import { useTicketInfo, useLot, useIsVenueOperator, useRedeem } from '@/hooks/useLuckyPass'
 import { useLocale } from '@/i18n/LocaleContext'
 import { toast } from 'sonner'
@@ -43,6 +44,10 @@ export function RedemptionView({ onBack }: RedemptionViewProps) {
   const { data: lot } = useLot(ticketInfo ? ticketInfo[0] : undefined)
   const { data: isOperator } = useIsVenueOperator(ticketInfo ? ticketInfo[0] : undefined, address)
   const redeem = useRedeem()
+  const [isSimulating, setIsSimulating] = useState(false)
+  // Public client uses the Arc Testnet transport (rpc.testnet.arc.io) directly,
+  // bypassing MetaMask — so simulateContract gets full revert data.
+  const publicClient = usePublicClient({ chainId: CHAIN_ID })
 
   // Keep nowSeconds current so signature validity re-evaluates every second
   useEffect(() => {
@@ -152,10 +157,99 @@ export function RedemptionView({ onBack }: RedemptionViewProps) {
 
   // ── Redeem ─────────────────────────────────────────────────────────────────
 
-  const handleRedeem = () => {
-    if (tokenId === undefined || !scannedPayload) return
-    const nonce = BigInt(scannedPayload.nonce)
+  /**
+   * Classify a revert error into one of the known redeem error keys.
+   * Prefers ContractFunctionRevertedError.errorName (viem decoded, exact),
+   * falls back to message string matching (MetaMask -32005 strips revert data).
+   * No signature / nonce / secret values are included in any log.
+   */
+  const classifyRedeemError = (e: unknown): string => {
+    // Layer A: viem decoded custom error name (available when Arc RPC returns revert data)
+    if (e instanceof ContractFunctionRevertedError && e.data?.errorName) {
+      const name = e.data.errorName
+      console.debug('[redeem] revert name:', name)
+      if (name === 'ChallengeExpired')               return t('redeem.errExpired')
+      if (name === 'AlreadyRedeemed')                return t('redeem.errAlready')
+      if (name === 'NonceMismatch')                  return t('redeem.errNonce')
+      if (name === 'InvalidSignature'
+        || name === 'ECDSAInvalidSignature'
+        || name === 'ECDSAInvalidSignatureLength'
+        || name === 'ECDSAInvalidSignatureS')         return t('redeem.errSig')
+      if (name === 'NotVenueOperator')               return t('redeem.errNotOp')
+      return `${t('redeem.errGeneric')}: ${name}`
+    }
+    // Layer B: string matching fallback (MetaMask -32005 wraps revert without data)
+    const msg = e instanceof Error ? e.message : String(e)
+    if (msg.includes('ChallengeExpired'))            return t('redeem.errExpired')
+    if (msg.includes('AlreadyRedeemed'))             return t('redeem.errAlready')
+    if (msg.includes('NonceMismatch'))               return t('redeem.errNonce')
+    if (msg.includes('InvalidSignature')
+      || msg.includes('ECDSAInvalid'))               return t('redeem.errSig')
+    if (msg.includes('NotVenueOperator'))            return t('redeem.errNotOp')
+    // -32005 from MetaMask: do NOT assume expired — show generic
+    console.debug('[redeem] unclassified error:', msg.slice(0, 120))
+    return `${t('redeem.errGeneric')}: ${msg.slice(0, 120)}`
+  }
+
+  const handleRedeem = async () => {
+    if (tokenId === undefined || !scannedPayload || !address) return
+
+    const nonce     = BigInt(scannedPayload.nonce)
     const timestamp = BigInt(scannedPayload.timestamp)
+
+    // ── Layer 1: client-side expiry pre-check ──────────────────────────────
+    // Check BEFORE opening MetaMask so the user gets an immediate clear message.
+    const nowSec = Math.floor(Date.now() / 1000)
+    if (nowSec > Number(timestamp) + REDEMPTION_EXPIRY) {
+      toast.error(t('redeem.errExpired'))
+      setStep('confirm')
+      return
+    }
+
+    // ── Layer 2: simulateContract via Arc RPC (bypasses MetaMask) ─────────
+    // Arc RPC returns full revert data; MetaMask -32005 strips it.
+    // Run BEFORE writeContract so we get a decoded revert reason if the tx
+    // would fail, and abort without prompting the user to sign.
+    if (!publicClient) {
+      // publicClient unavailable (not connected) — skip simulate, still check expiry above
+      console.warn('[redeem] publicClient unavailable, skipping simulate')
+    } else {
+      setIsSimulating(true)
+      try {
+        await publicClient.simulateContract({
+          address: LUCKY_PASS_ADDRESS,
+          abi: LUCKY_PASS_ABI,
+          functionName: 'redeem',
+          args: [tokenId, scannedPayload.signature, nonce, timestamp],
+          account: address,
+        })
+        // simulateContract succeeded — the tx should go through; fall through to writeContract
+        console.debug('[redeem] simulate: OK')
+      } catch (simErr: unknown) {
+        setIsSimulating(false)
+        const classified = classifyRedeemError(simErr)
+        // If expired, send user back to confirm so they can re-scan a fresh QR
+        if (classified === t('redeem.errExpired')) {
+          toast.error(classified)
+          setStep('confirm')
+        } else {
+          toast.error(classified)
+        }
+        return  // abort — do not call writeContract
+      } finally {
+        setIsSimulating(false)
+      }
+    }
+
+    // ── Layer 2b: re-check expiry after simulate (simulate takes ~500 ms) ─
+    const nowSec2 = Math.floor(Date.now() / 1000)
+    if (nowSec2 > Number(timestamp) + REDEMPTION_EXPIRY) {
+      toast.error(t('redeem.errExpired'))
+      setStep('confirm')
+      return
+    }
+
+    // ── Layer 3: writeContract (MetaMask prompt) ───────────────────────────
     redeem.redeem(tokenId, scannedPayload.signature, nonce, timestamp)
     toast.promise(
       new Promise<void>((res, rej) => {
@@ -174,12 +268,7 @@ export function RedemptionView({ onBack }: RedemptionViewProps) {
 
   const redeemErrorText = (() => {
     if (!redeem.error) return null
-    const msg = redeem.error.message
-    if (msg.includes('ChallengeExpired'))  return t('redeem.errExpired')
-    if (msg.includes('AlreadyRedeemed'))   return t('redeem.errAlready')
-    if (msg.includes('NonceMismatch'))     return t('redeem.errNonce')
-    if (msg.includes('InvalidSignature'))  return t('redeem.errSig')
-    return `${t('redeem.errGeneric')}: ${msg.slice(0, 120)}`
+    return classifyRedeemError(redeem.error)
   })()
 
   const reset = () => {
@@ -368,13 +457,15 @@ export function RedemptionView({ onBack }: RedemptionViewProps) {
               <p className="text-sm text-emerald-700">{t('redeem.signedReady')}</p>
             </div>
             <button
-              onClick={handleRedeem}
-              disabled={redeem.isPending || redeem.isConfirming}
+              onClick={() => { void handleRedeem() }}
+              disabled={redeem.isPending || redeem.isConfirming || isSimulating}
               className="w-full py-3 rounded-xl bg-violet-600 text-white font-medium hover:bg-violet-700 active:scale-95 transition-all disabled:opacity-50"
             >
-              {redeem.isPending || redeem.isConfirming
+              {isSimulating
                 ? t('redeem.redeemingButton')
-                : t('redeem.redeemButton')}
+                : redeem.isPending || redeem.isConfirming
+                  ? t('redeem.redeemingButton')
+                  : t('redeem.redeemButton')}
             </button>
             {redeemErrorText && (
               <p className="text-xs text-red-600 bg-red-50 p-3 rounded-lg">{redeemErrorText}</p>
