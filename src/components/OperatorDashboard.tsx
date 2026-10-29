@@ -48,6 +48,7 @@ interface LotRowProps {
 function LotRow({ lotId }: LotRowProps) {
   const [expanded, setExpanded] = useState(false)
   const [operatorAddr, setOperatorAddr] = useState('')
+  const [copiedLotUrl, setCopiedLotUrl] = useState(false)
   const { data: lot } = useLot(lotId)
   const { data: entrantCount } = useEntrantCount(lotId)
   const { data: waitlistLen } = useWaitlistLength(lotId)
@@ -200,6 +201,42 @@ function LotRow({ lotId }: LotRowProps) {
               </button>
             </div>
           </div>
+
+          {/* Per-lot public URL */}
+          {(() => {
+            const lotUrl = `${window.location.origin}/#/lot/${lotId}`
+            return (
+              <div className="space-y-1.5 pt-2 border-t border-gray-50">
+                <p className="text-xs font-medium text-gray-600">{t('store.publicUrl')}</p>
+                <div className="flex items-center gap-1.5 bg-violet-50 rounded-lg px-2.5 py-1.5 flex-wrap">
+                  <span className="text-xs font-mono text-violet-700 break-all flex-1 min-w-0">{lotUrl}</span>
+                  <div className="flex items-center gap-1 shrink-0">
+                    <button
+                      onClick={() => {
+                        void navigator.clipboard.writeText(lotUrl).then(() => {
+                          setCopiedLotUrl(true)
+                          setTimeout(() => setCopiedLotUrl(false), 2000)
+                        })
+                      }}
+                      className="flex items-center gap-1 text-xs text-violet-700 hover:text-violet-900 px-2 py-1 rounded-lg hover:bg-violet-100 transition-colors"
+                    >
+                      {copiedLotUrl ? <Check size={12} /> : <Copy size={12} />}
+                      {copiedLotUrl ? t('store.copied') : t('store.copyUrl')}
+                    </button>
+                    <a
+                      href={`#/lot/${lotId}`}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="flex items-center gap-1 text-xs text-violet-700 hover:text-violet-900 px-2 py-1 rounded-lg hover:bg-violet-100 transition-colors"
+                    >
+                      <ExternalLink size={12} />
+                      {t('store.viewBuyerPage')}
+                    </a>
+                  </div>
+                </div>
+              </div>
+            )
+          })()}
         </div>
       )}
     </div>

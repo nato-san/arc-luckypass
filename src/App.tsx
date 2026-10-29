@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback } from 'react'
 import { useAccount, useChainId } from 'wagmi'
 import { ConnectKitButton } from 'connectkit'
-import { Ticket, Settings, Building2, Shield, AlertTriangle, Lock, Wifi, Copy, Check, ExternalLink } from 'lucide-react'
+import { Ticket, Settings, Building2, Shield, AlertTriangle, Lock, Wifi } from 'lucide-react'
 import { arcTestnet } from 'viem/chains'
 import { LotGrid } from './components/LotGrid'
 import { PurchaseFlow } from './components/PurchaseFlow'
@@ -207,50 +207,8 @@ function StoreTabBar({ view, setView, t }: StoreTabBarProps) {
   )
 }
 
-// Share URL panel shown in store header
-function PublicUrlBanner({ lotId, t }: { lotId?: bigint; t: (k: TranslationKey) => string }) {
-  const [copied, setCopied] = useState(false)
-
-  // Build the public URL — use window.location.origin + hash route
-  const base = typeof window !== 'undefined'
-    ? `${window.location.origin}/`
-    : 'https://arc-luckypass.vercel.app/'
-  const url = lotId !== undefined ? `${base}#/lot/${lotId}` : base
-
-  const handleCopy = () => {
-    void navigator.clipboard.writeText(url).then(() => {
-      setCopied(true)
-      setTimeout(() => setCopied(false), 2000)
-    })
-  }
-
-  return (
-    <div className="bg-violet-50 border-b border-violet-100 px-4 py-2">
-      <div className="max-w-2xl mx-auto flex items-center gap-2 flex-wrap">
-        <span className="text-xs text-violet-600 font-medium shrink-0">{t('store.publicUrl')}:</span>
-        <span className="text-xs font-mono text-violet-700 truncate flex-1 min-w-0">{url}</span>
-        <div className="flex items-center gap-1 shrink-0">
-          <button
-            onClick={handleCopy}
-            className="flex items-center gap-1 text-xs text-violet-700 hover:text-violet-900 px-2 py-1 rounded-lg hover:bg-violet-100 transition-colors"
-          >
-            {copied ? <Check size={12} /> : <Copy size={12} />}
-            {copied ? t('store.copied') : t('store.copyUrl')}
-          </button>
-          <a
-            href={lotId !== undefined ? `#/lot/${lotId}` : '#'}
-            target="_blank"
-            rel="noopener noreferrer"
-            className="flex items-center gap-1 text-xs text-violet-700 hover:text-violet-900 px-2 py-1 rounded-lg hover:bg-violet-100 transition-colors"
-          >
-            <ExternalLink size={12} />
-            {t('store.viewBuyerPage')}
-          </a>
-        </div>
-      </div>
-    </div>
-  )
-}
+// PublicUrlBanner removed — per-lot URLs are now shown inside each LotRow
+// in OperatorDashboard instead of a single fixed banner here.
 
 interface StoreAppProps {
   initialView: StoreView
@@ -295,9 +253,6 @@ function StoreApp({ initialView, navigate }: StoreAppProps) {
 
       {/* Wrong-network banner */}
       <ChainGuard />
-
-      {/* Public URL banner */}
-      <PublicUrlBanner lotId={1n} t={t} />
 
       {/* Tab bar — store-only tabs */}
       <StoreTabBar view={view} setView={handleSetView} t={t} />
