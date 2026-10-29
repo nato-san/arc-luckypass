@@ -82,6 +82,8 @@ export const translations = {
   'lot.closed':         { ja: '抽選終了',          en: 'Closed' },
   'lot.processing':     { ja: '処理中...',         en: 'Processing...' },
   'lot.noLots':         { ja: '現在募集中のロットはありません', en: 'No active lots at the moment' },
+  'lot.drawing':        { ja: '抽選中です。しばらくお待ちください。', en: 'Drawing in progress. Please wait.' },
+  'lot.wordReceived':   { ja: '当選者を確定中です。もうすぐ結果が出ます。', en: 'Finalizing winners. Results coming soon.' },
 
   // Lot state labels (kept short for badges)
   'state.0': { ja: 'OPEN',          en: 'OPEN' },
@@ -273,6 +275,8 @@ export const translations = {
   'op.vrfFeeInfo':         { ja: 'VRF費用',                   en: 'VRF fee' },
   'op.vrfFeeBuffer':       { ja: '(20%バッファー込み)',         en: '(incl. 20% buffer)' },
 
+  'op.txWalletApprove':  { ja: 'ウォレットで承認してください...', en: 'Approve in your wallet...' },
+  'op.txConfirming':     { ja: 'オンチェーン確定待ち...', en: 'Waiting for confirmation...' },
   'toast.createLoading': { ja: 'ロット作成中...',     en: 'Creating lot...' },
   'toast.createSuccess': { ja: 'ロット作成完了！',     en: 'Lot created!' },
   'toast.createError':   { ja: 'ロット作成に失敗しました', en: 'Lot creation failed' },

@@ -280,7 +280,7 @@ export function useRedeem() {
 // Operator-only write hooks
 export function useCreateLot() {
   const { writeContract, data: hash, isPending, error } = useWriteContract()
-  const { isLoading: isConfirming, isSuccess } = useWaitForTransactionReceipt({ hash })
+  const { isLoading: isConfirming, isSuccess, data: receipt } = useWaitForTransactionReceipt({ hash })
   return {
     createLot: (
       name: string, description: string, priceUsdc: bigint,
@@ -291,7 +291,7 @@ export function useCreateLot() {
       args: [name, description, priceUsdc, supply, paymentWindow, maxEntrants,
              entryOpenAt, entryCloseAt, fixedDeadlineAt],
     }),
-    hash, isPending, isConfirming, isSuccess, error,
+    hash, isPending, isConfirming, isSuccess, receipt, error,
   }
 }
 

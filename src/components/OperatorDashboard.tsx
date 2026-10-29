@@ -1,6 +1,6 @@
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { useAccount, useBalance, usePublicClient } from 'wagmi'
-import { Plus, Zap, Users, ChevronDown, ChevronUp, ExternalLink, Globe } from 'lucide-react'
+import { Plus, Zap, Users, ChevronDown, ChevronUp, ExternalLink, Globe, CheckCircle, Copy, Check, Loader } from 'lucide-react'
 import { parseUnits, formatUnits } from 'viem'
 import { arcTestnet } from 'viem/chains'
 import { buildTxExplorerUrl } from '@/onchain-facts'
@@ -208,6 +208,7 @@ function LotRow({ lotId }: LotRowProps) {
 
 interface CreateLotFormProps {
   onClose: () => void
+  onCreated: () => void   // called after successful creation so parent can refetch
 }
 
 // Payment window presets: [translationKey, seconds]
@@ -222,10 +223,11 @@ const WINDOW_PRESETS: Array<{ key: string; seconds: number }> = [
   { key: 'op.windowCustom', seconds: -1 },
 ]
 
-function CreateLotForm({ onClose }: CreateLotFormProps) {
+function CreateLotForm({ onClose, onCreated }: CreateLotFormProps) {
   const [form, setForm] = useState({
     name: '', description: '', priceUsdc: '', supply: '', maxEntrants: '200',
   })
+  const [copiedUrl, setCopiedUrl] = useState(false)
   // Capture "now" once at mount so minUnix is stable across renders
   const [nowUnix] = useState(() => Math.floor(Date.now() / 1000))
   // Shared timezone for all date pickers in this form (JST default)
@@ -241,6 +243,40 @@ function CreateLotForm({ onClose }: CreateLotFormProps) {
 
   const createLot = useCreateLot()
   const { t } = useLocale()
+
+  // Extract newly created lotId from receipt's LotCreated event.
+  // ABI: LotCreated(uint256 indexed lotId, string name, uint256 priceUsdc, uint32 supply, address merchant)
+  // topics layout: [0]=sig, [1]=lotId (only indexed param)
+  // topic[0] constant: keccak256("LotCreated(uint256,string,uint256,uint32,address)")
+  const LOT_CREATED_TOPIC0 = '0x45586525eb8ceeba50ac650fad2b5b61c6c2eb9111e4c2f0852995f809e4c182' as const
+  const createdLotId: bigint | null = (() => {
+    if (!createLot.isSuccess || !createLot.receipt) return null
+    for (const log of createLot.receipt.logs) {
+      if (
+        log.address.toLowerCase() === LUCKY_PASS_ADDRESS.toLowerCase() &&
+        log.topics.length >= 2 &&
+        log.topics[0]?.toLowerCase() === LOT_CREATED_TOPIC0
+      ) {
+        // topic[1] = lotId (uint256, indexed) — confirmed by ABI + topic[0] match
+        const t1 = log.topics[1]
+        if (t1) try { return BigInt(t1) } catch { /* ignore */ }
+      }
+    }
+    return null
+  })()
+
+  const createdLotUrl = createdLotId !== null
+    ? `${window.location.origin}/#/lot/${createdLotId}`
+    : null
+
+  // Call parent refetch and show success when tx confirmed
+  useEffect(() => {
+    if (createLot.isSuccess) {
+      onCreated()
+      toast.success(t('toast.createSuccess'))
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [createLot.isSuccess])
 
   const paymentWindowSeconds = (): bigint | null => {
     if (paymentMode === 'fixed') return 0n
@@ -286,10 +322,7 @@ function CreateLotForm({ onClose }: CreateLotFormProps) {
         BigInt(entryCloseAt),
         BigInt(fixedDeadlineAt ?? 0),
       )
-      toast.promise(
-        new Promise<void>(res => setTimeout(res, 5000)),
-        { loading: t('toast.createLoading'), success: t('toast.createSuccess'), error: t('toast.createError') }
-      )
+      toast.info(t('toast.createLoading'))
     } catch {
       toast.error(t('op.errInvalidInput'))
     }
@@ -429,16 +462,67 @@ function CreateLotForm({ onClose }: CreateLotFormProps) {
 
       {field(t('op.fieldMaxEntrants'), 'maxEntrants', 'number', 'e.g. 200 (max 500)')}
 
+      {/* Tx status display */}
+      {(createLot.isPending || createLot.isConfirming) && (
+        <div className="flex items-center gap-2 p-3 bg-amber-50 rounded-xl text-sm text-amber-800">
+          <Loader size={14} className="animate-spin shrink-0" />
+          {createLot.isPending ? t('op.txWalletApprove') : t('op.txConfirming')}
+        </div>
+      )}
+
+      {/* Success panel — show after confirmation */}
+      {createLot.isSuccess && (
+        <div className="border border-emerald-200 rounded-xl p-4 bg-emerald-50 space-y-3">
+          <div className="flex items-center gap-2 text-emerald-700">
+            <CheckCircle size={16} />
+            <span className="text-sm font-semibold">{t('toast.createSuccess')}</span>
+          </div>
+          {createLot.hash && (
+            <a href={buildTxExplorerUrl(CHAIN_ID, createLot.hash)} target="_blank" rel="noopener noreferrer"
+               className="flex items-center gap-1.5 text-xs text-blue-600 hover:text-blue-800">
+              <ExternalLink size={12} /> {t('op.viewTx')}
+            </a>
+          )}
+          {createdLotUrl && (
+            <div className="bg-white rounded-lg border border-emerald-100 p-3 space-y-2">
+              <p className="text-xs font-medium text-gray-600">{t('store.publicUrl')}:</p>
+              <p className="text-xs font-mono text-gray-700 break-all">{createdLotUrl}</p>
+              <button
+                onClick={() => {
+                  void navigator.clipboard.writeText(createdLotUrl).then(() => {
+                    setCopiedUrl(true)
+                    setTimeout(() => setCopiedUrl(false), 2000)
+                  })
+                }}
+                className="flex items-center gap-1.5 text-xs text-violet-700 hover:text-violet-900 px-2 py-1 rounded-lg bg-violet-50 hover:bg-violet-100 transition-colors"
+              >
+                {copiedUrl ? <Check size={12} /> : <Copy size={12} />}
+                {copiedUrl ? t('store.copied') : t('store.copyUrl')}
+              </button>
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* Error display */}
+      {createLot.error && (
+        <div className="p-3 bg-red-50 rounded-xl text-xs text-red-700">
+          {t('toast.createError')}: {createLot.error.message.slice(0, 100)}
+        </div>
+      )}
+
       <div className="flex flex-wrap gap-2 pt-1">
-        <button
-          onClick={handleCreate}
-          disabled={createLot.isPending || createLot.isConfirming}
-          className="flex-1 min-w-[120px] py-2 rounded-lg bg-violet-600 text-white text-sm font-medium hover:bg-violet-700 disabled:opacity-50"
-        >
-          {createLot.isPending || createLot.isConfirming ? t('op.creatingButton') : t('op.createButton')}
-        </button>
+        {!createLot.isSuccess && (
+          <button
+            onClick={handleCreate}
+            disabled={createLot.isPending || createLot.isConfirming}
+            className="flex-1 min-w-[120px] py-2 rounded-lg bg-violet-600 text-white text-sm font-medium hover:bg-violet-700 disabled:opacity-50"
+          >
+            {createLot.isPending || createLot.isConfirming ? t('op.creatingButton') : t('op.createButton')}
+          </button>
+        )}
         <button onClick={onClose} className="min-w-[80px] px-4 py-2 rounded-lg border border-gray-200 text-sm text-gray-600 hover:bg-gray-50">
-          {t('op.cancelButton')}
+          {createLot.isSuccess ? t('purchase.back') : t('op.cancelButton')}
         </button>
       </div>
     </div>
@@ -447,7 +531,7 @@ function CreateLotForm({ onClose }: CreateLotFormProps) {
 
 export function OperatorDashboard() {
   const { address } = useAccount()
-  const { data: lotCount } = useLotCount()
+  const { data: lotCount, refetch: refetchLotCount } = useLotCount()
   const { data: contractBalance } = useBalance({ address: LUCKY_PASS_ADDRESS, chainId: CHAIN_ID })
   const [showCreate, setShowCreate] = useState(false)
   const { t } = useLocale()
@@ -481,7 +565,12 @@ export function OperatorDashboard() {
       </div>
 
       {/* Create lot form */}
-      {showCreate && <CreateLotForm onClose={() => setShowCreate(false)} />}
+      {showCreate && (
+        <CreateLotForm
+          onClose={() => setShowCreate(false)}
+          onCreated={() => void refetchLotCount()}
+        />
+      )}
 
       {/* Lot list */}
       <div className="space-y-2">
