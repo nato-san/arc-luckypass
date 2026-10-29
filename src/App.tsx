@@ -1,7 +1,7 @@
-import { useState } from 'react'
+import { useState, useEffect, useCallback } from 'react'
 import { useAccount, useChainId } from 'wagmi'
 import { ConnectKitButton } from 'connectkit'
-import { Ticket, Settings, Building2, Shield, AlertTriangle, Lock, Wifi } from 'lucide-react'
+import { Ticket, Settings, Building2, Shield, AlertTriangle, Lock, Wifi, Copy, Check, ExternalLink } from 'lucide-react'
 import { arcTestnet } from 'viem/chains'
 import { LotGrid } from './components/LotGrid'
 import { PurchaseFlow } from './components/PurchaseFlow'
@@ -14,10 +14,53 @@ import { useLocale } from './i18n/LocaleContext'
 import { LanguageToggle } from './i18n/LanguageToggle'
 import type { TranslationKey } from './i18n/translations'
 
-type View = 'lots' | 'purchase' | 'operator' | 'storemanager' | 'redeem'
+// ─── Hash-based router ────────────────────────────────────────────────────────
+// Routes:
+//   /              → BuyerApp (lot list)
+//   /#/lot/:id     → BuyerApp (specific lot purchase page)
+//   /#/store       → StoreApp (operator dashboard)
+//   /#/store/redeem→ StoreApp (QR redemption)
 
-// ─── Permission gate ─────────────────────────────────────────────────────────
-// Shows a clear reason why the user cannot access a protected view.
+type Route =
+  | { page: 'buyer-list' }
+  | { page: 'buyer-lot'; lotId: bigint }
+  | { page: 'store'; storeView: StoreView }
+
+type StoreView = 'operator' | 'storemanager' | 'redeem'
+
+function parseHash(hash: string): Route {
+  const h = hash.replace(/^#\/?/, '')
+  if (h.startsWith('store/redeem')) return { page: 'store', storeView: 'redeem' }
+  if (h.startsWith('store')) return { page: 'store', storeView: 'operator' }
+  const lotMatch = h.match(/^lot\/(\d+)$/)
+  if (lotMatch) {
+    try { return { page: 'buyer-lot', lotId: BigInt(lotMatch[1]) } } catch { /* fall through */ }
+  }
+  return { page: 'buyer-list' }
+}
+
+function useRoute(): [Route, (r: Route) => void] {
+  const [route, setRouteState] = useState<Route>(() => parseHash(window.location.hash))
+
+  useEffect(() => {
+    const handler = () => setRouteState(parseHash(window.location.hash))
+    window.addEventListener('hashchange', handler)
+    return () => window.removeEventListener('hashchange', handler)
+  }, [])
+
+  const navigate = useCallback((r: Route) => {
+    if (r.page === 'buyer-list') window.location.hash = ''
+    else if (r.page === 'buyer-lot') window.location.hash = `#/lot/${r.lotId}`
+    else if (r.page === 'store') {
+      window.location.hash = r.storeView === 'redeem' ? '#/store/redeem' : '#/store'
+    }
+    setRouteState(r)
+  }, [])
+
+  return [route, navigate]
+}
+
+// ─── Permission gate ──────────────────────────────────────────────────────────
 interface GateProps {
   isConnected: boolean
   isCorrectChain: boolean
@@ -60,22 +103,90 @@ function PermissionGate({ isConnected, isCorrectChain, hasPermission, titleKey, 
   return <>{children}</>
 }
 
-// ─── Tab bar ─────────────────────────────────────────────────────────────────
-interface TabBarProps {
-  view: View
-  setView: (v: View) => void
+// ─── Buyer app ────────────────────────────────────────────────────────────────
+
+interface BuyerAppProps {
+  initialLotId?: bigint
+}
+
+function BuyerApp({ initialLotId }: BuyerAppProps) {
+  const { t } = useLocale()
+  // localLotId overrides initialLotId when the user navigates within the buyer page
+  // (e.g. clicks a lot card from the list). Reset to undefined to go back to the list.
+  const [localLotId, setLocalLotId] = useState<bigint | undefined>(undefined)
+  const selectedLotId = localLotId ?? initialLotId
+  const inPurchase = selectedLotId !== undefined
+
+  return (
+    <div className="min-h-dvh bg-gray-50 font-[DM_Sans,sans-serif]">
+      {/* Header */}
+      <header className="bg-white border-b border-gray-100 sticky top-0 z-40">
+        <div className="max-w-2xl mx-auto px-4 h-14 flex items-center justify-between gap-2">
+          <button
+            onClick={() => setLocalLotId(undefined)}
+            className="flex items-center gap-2 font-semibold text-gray-900 shrink-0"
+          >
+            <div className="w-7 h-7 rounded-lg bg-gray-900 flex items-center justify-center">
+              <Ticket size={14} className="text-white" />
+            </div>
+            <span className="hidden sm:inline">Arc LuckyPass</span>
+            <span className="sm:hidden">LuckyPass</span>
+          </button>
+          <div className="flex items-center gap-1 sm:gap-1.5 shrink-0">
+            <LanguageToggle />
+            <ConnectKitButton />
+          </div>
+        </div>
+      </header>
+
+      {/* Wrong-network banner */}
+      <ChainGuard />
+
+      {/* Main content — no store tabs visible to buyers */}
+      <main>
+        {!inPurchase ? (
+          <div className="max-w-2xl mx-auto px-4 py-8">
+            <div className="mb-6">
+              <h1 className="text-2xl font-bold text-gray-900">{t('home.title')}</h1>
+              <p className="text-sm text-gray-500 mt-1">{t('home.subtitle')}</p>
+            </div>
+            {/* LotGrid works even when wallet is not connected */}
+            <LotGrid onSelectLot={setLocalLotId} />
+            {/* Testnet info */}
+            <div className="mt-8 p-4 bg-white rounded-xl border border-gray-100 text-xs text-gray-400 space-y-1">
+              <p className="font-medium text-gray-600">{t('home.testnetInfo')}</p>
+              <p>{t('home.contract')}: <span className="font-mono">0xab7678c528f1d517d642c13e3fd97124a743abe8</span></p>
+              <p>{t('home.randomness')}: D20DAO VRF (Arc Testnet Coordinator)</p>
+              <p>{t('home.chain')}: Arc Testnet (5042002)</p>
+            </div>
+          </div>
+        ) : (
+          <PurchaseFlow
+            lotId={selectedLotId}
+            onBack={() => setLocalLotId(undefined)}
+          />
+        )}
+      </main>
+    </div>
+  )
+}
+
+// ─── Store app ────────────────────────────────────────────────────────────────
+
+interface StoreTabBarProps {
+  view: StoreView
+  setView: (v: StoreView) => void
   t: (k: TranslationKey) => string
 }
 
-function TabBar({ view, setView, t }: TabBarProps) {
+function StoreTabBar({ view, setView, t }: StoreTabBarProps) {
   const active = 'border-b-2 border-gray-900 text-gray-900 font-semibold'
   const inactive = 'border-b-2 border-transparent text-gray-500 hover:text-gray-700'
 
-  const tabs: { id: View; label: string; icon: React.ReactNode }[] = [
-    { id: 'lots',         label: t('nav.lottery'),    icon: <Ticket size={14} /> },
-    { id: 'redeem',       label: t('header.ticketRedeem'), icon: <Shield size={14} /> },
+  const tabs: { id: StoreView; label: string; icon: React.ReactNode }[] = [
     { id: 'operator',     label: t('nav.operations'), icon: <Settings size={14} /> },
     { id: 'storemanager', label: t('nav.storeAdmin'),  icon: <Building2 size={14} /> },
+    { id: 'redeem',       label: t('nav.redeem'),      icon: <Shield size={14} /> },
   ]
 
   return (
@@ -85,7 +196,7 @@ function TabBar({ view, setView, t }: TabBarProps) {
           <button
             key={tab.id}
             onClick={() => setView(tab.id)}
-            className={`flex items-center gap-1 sm:gap-1.5 px-2 sm:px-4 py-3 text-xs sm:text-sm transition-colors whitespace-nowrap shrink-0 ${view === tab.id || (view === 'purchase' && tab.id === 'lots') ? active : inactive}`}
+            className={`flex items-center gap-1 sm:gap-1.5 px-2 sm:px-4 py-3 text-xs sm:text-sm transition-colors whitespace-nowrap shrink-0 ${view === tab.id ? active : inactive}`}
           >
             {tab.icon}
             {tab.label}
@@ -96,41 +207,85 @@ function TabBar({ view, setView, t }: TabBarProps) {
   )
 }
 
-// ─── App ─────────────────────────────────────────────────────────────────────
+// Share URL panel shown in store header
+function PublicUrlBanner({ lotId, t }: { lotId?: bigint; t: (k: TranslationKey) => string }) {
+  const [copied, setCopied] = useState(false)
 
-export default function App() {
+  // Build the public URL — use window.location.origin + hash route
+  const base = typeof window !== 'undefined'
+    ? `${window.location.origin}/`
+    : 'https://arc-luckypass.vercel.app/'
+  const url = lotId !== undefined ? `${base}#/lot/${lotId}` : base
+
+  const handleCopy = () => {
+    void navigator.clipboard.writeText(url).then(() => {
+      setCopied(true)
+      setTimeout(() => setCopied(false), 2000)
+    })
+  }
+
+  return (
+    <div className="bg-violet-50 border-b border-violet-100 px-4 py-2">
+      <div className="max-w-2xl mx-auto flex items-center gap-2 flex-wrap">
+        <span className="text-xs text-violet-600 font-medium shrink-0">{t('store.publicUrl')}:</span>
+        <span className="text-xs font-mono text-violet-700 truncate flex-1 min-w-0">{url}</span>
+        <div className="flex items-center gap-1 shrink-0">
+          <button
+            onClick={handleCopy}
+            className="flex items-center gap-1 text-xs text-violet-700 hover:text-violet-900 px-2 py-1 rounded-lg hover:bg-violet-100 transition-colors"
+          >
+            {copied ? <Check size={12} /> : <Copy size={12} />}
+            {copied ? t('store.copied') : t('store.copyUrl')}
+          </button>
+          <a
+            href={lotId !== undefined ? `#/lot/${lotId}` : '#'}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="flex items-center gap-1 text-xs text-violet-700 hover:text-violet-900 px-2 py-1 rounded-lg hover:bg-violet-100 transition-colors"
+          >
+            <ExternalLink size={12} />
+            {t('store.viewBuyerPage')}
+          </a>
+        </div>
+      </div>
+    </div>
+  )
+}
+
+interface StoreAppProps {
+  initialView: StoreView
+  navigate: (r: Route) => void
+}
+
+function StoreApp({ initialView, navigate }: StoreAppProps) {
   const { isConnected } = useAccount()
   const chainId = useChainId()
-  const [view, setView] = useState<View>('lots')
-  const [selectedLotId, setSelectedLotId] = useState<bigint | undefined>()
   const { t } = useLocale()
+  // view is always derived from the hash (initialView) — no local state needed
+  const view = initialView
 
   const isCorrectChain = chainId === arcTestnet.id
-
-  // Role reads — safe even before connect (returns undefined, not error)
+  // Role check — lotId=1n for now (only one lot in this deployment)
   const { isOwner, canManage } = useRole(1n)
 
-  const handleSelectLot = (lotId: bigint) => {
-    setSelectedLotId(lotId)
-    setView('purchase')
+  // When tab changes update hash; navigating back via browser also updates initialView
+  // which re-renders StoreApp with new initialView, so view follows without a useEffect.
+  const handleSetView = (v: StoreView) => {
+    navigate({ page: 'store', storeView: v })
   }
 
   return (
     <div className="min-h-dvh bg-gray-50 font-[DM_Sans,sans-serif]">
-      {/* ── Header ── */}
+      {/* Header */}
       <header className="bg-white border-b border-gray-100 sticky top-0 z-40">
         <div className="max-w-2xl mx-auto px-4 h-14 flex items-center justify-between gap-2">
-          <button
-            onClick={() => setView('lots')}
-            className="flex items-center gap-2 font-semibold text-gray-900 shrink-0"
-          >
-            <div className="w-7 h-7 rounded-lg bg-gray-900 flex items-center justify-center">
-              <Ticket size={14} className="text-white" />
+          <div className="flex items-center gap-2 font-semibold text-gray-900 shrink-0">
+            <div className="w-7 h-7 rounded-lg bg-violet-600 flex items-center justify-center">
+              <Building2 size={14} className="text-white" />
             </div>
-            <span className="hidden sm:inline">Arc LuckyPass</span>
-            <span className="sm:hidden">LuckyPass</span>
-          </button>
-
+            <span className="hidden sm:inline text-violet-700">{t('store.appTitle')}</span>
+            <span className="sm:hidden text-violet-700">管理</span>
+          </div>
           <div className="flex items-center gap-1 sm:gap-1.5 shrink-0">
             <LanguageToggle />
             <ConnectKitButton />
@@ -138,51 +293,17 @@ export default function App() {
         </div>
       </header>
 
-      {/* ── Wrong-network banner ── */}
+      {/* Wrong-network banner */}
       <ChainGuard />
 
-      {/* ── Tab bar (always visible) ── */}
-      <TabBar view={view} setView={setView} t={t} />
+      {/* Public URL banner */}
+      <PublicUrlBanner lotId={1n} t={t} />
 
-      {/* ── Main content ── */}
+      {/* Tab bar — store-only tabs */}
+      <StoreTabBar view={view} setView={handleSetView} t={t} />
+
+      {/* Content */}
       <main>
-
-        {/* 抽選に参加 */}
-        {(view === 'lots' || view === 'purchase') && (
-          <>
-            {view === 'lots' && (
-              <div className="max-w-2xl mx-auto px-4 py-8">
-                <div className="mb-6">
-                  <h1 className="text-2xl font-bold text-gray-900">{t('home.title')}</h1>
-                  <p className="text-sm text-gray-500 mt-1">{t('home.subtitle')}</p>
-                </div>
-
-                {!isConnected ? (
-                  <div className="bg-white rounded-2xl border border-gray-100 p-8 text-center">
-                    <Ticket size={36} className="mx-auto mb-4 text-gray-300" />
-                    <p className="text-sm text-gray-600 mb-4">{t('home.connectPrompt')}</p>
-                    <ConnectKitButton />
-                  </div>
-                ) : (
-                  <LotGrid onSelectLot={handleSelectLot} />
-                )}
-
-                {/* Testnet info */}
-                <div className="mt-8 p-4 bg-white rounded-xl border border-gray-100 text-xs text-gray-400 space-y-1">
-                  <p className="font-medium text-gray-600">{t('home.testnetInfo')}</p>
-                  <p>{t('home.contract')}: <span className="font-mono">0xab7678c528f1d517d642c13e3fd97124a743abe8</span></p>
-                  <p>{t('home.randomness')}: D20DAO VRF (Arc Testnet Coordinator)</p>
-                  <p>{t('home.chain')}: Arc Testnet (5042002)</p>
-                </div>
-              </div>
-            )}
-
-            {view === 'purchase' && selectedLotId !== undefined && (
-              <PurchaseFlow lotId={selectedLotId} onBack={() => setView('lots')} />
-            )}
-          </>
-        )}
-
         {/* 運営管理 */}
         {view === 'operator' && (
           <PermissionGate
@@ -211,9 +332,24 @@ export default function App() {
           </PermissionGate>
         )}
 
-        {/* 引換 (venue operators — チェックはビュー内部) */}
-        {view === 'redeem' && <RedemptionView onBack={() => setView('lots')} />}
+        {/* QR引換 */}
+        {view === 'redeem' && (
+          <RedemptionView onBack={() => handleSetView('operator')} />
+        )}
       </main>
     </div>
   )
+}
+
+// ─── Root ─────────────────────────────────────────────────────────────────────
+
+export default function App() {
+  const [route, navigate] = useRoute()
+
+  if (route.page === 'store') {
+    return <StoreApp initialView={route.storeView} navigate={navigate} />
+  }
+
+  const initialLotId = route.page === 'buyer-lot' ? route.lotId : undefined
+  return <BuyerApp initialLotId={initialLotId} />
 }

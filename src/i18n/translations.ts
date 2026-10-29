@@ -4,10 +4,22 @@
 export type Locale = 'ja' | 'en'
 
 export const translations = {
-  // ─── Navigation tabs (always visible) ────────────────────────────────────
+  // ─── Navigation tabs ──────────────────────────────────────────────────────
   'nav.lottery':        { ja: '抽選に参加',  en: 'Enter Lottery' },
   'nav.storeAdmin':     { ja: '店舗管理',    en: 'Store Admin' },
   'nav.operations':     { ja: '運営管理',    en: 'Operations' },
+  'nav.redeem':         { ja: 'QR引換',      en: 'QR Redeem' },
+
+  // ─── Store app UI ──────────────────────────────────────────────────────────
+  'store.appTitle':        { ja: 'LuckyPass 管理',       en: 'LuckyPass Admin' },
+  'store.publicUrl':       { ja: '公開URL',              en: 'Public URL' },
+  'store.copyUrl':         { ja: 'URLをコピー',           en: 'Copy URL' },
+  'store.copied':          { ja: 'コピーしました',        en: 'Copied!' },
+  'store.viewBuyerPage':   { ja: '購入者ページを確認する', en: 'View buyer page' },
+
+  // ─── Buyer app UI ─────────────────────────────────────────────────────────
+  'buyer.connectToEnter':  { ja: 'ウォレットを接続してエントリーしてください', en: 'Connect your wallet to enter' },
+  'buyer.connectToBuy':    { ja: 'ウォレットを接続して購入してください', en: 'Connect your wallet to buy' },
 
   // ─── Permission gates ──────────────────────────────────────────────────
   'gate.connectTitle':      { ja: 'ウォレット接続が必要です',           en: 'Wallet connection required' },

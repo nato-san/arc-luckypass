@@ -7,6 +7,8 @@ interface LotGridProps {
   onSelectLot: (lotId: bigint) => void
 }
 
+// LotGrid works even when the wallet is not connected — lot info is public.
+// The connect prompt appears inside each LotCard for actions that need a wallet.
 export function LotGrid({ onSelectLot }: LotGridProps) {
   const { data: lotCount, isLoading } = useLotCount()
   const { t } = useLocale()

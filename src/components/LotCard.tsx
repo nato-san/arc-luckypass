@@ -1,4 +1,5 @@
 import { useAccount } from 'wagmi'
+import { ConnectKitButton } from 'connectkit'
 import { Ticket, Users, Trophy, Lock } from 'lucide-react'
 import { formatUsdc } from '@/onchain-money'
 import { useLot, useHasEntered, useIsWinner, useEntrantCount, useEnter } from '@/hooks/useLuckyPass'
@@ -102,6 +103,12 @@ export function LotCard({ lotId, onSelectLot }: LotCardProps) {
 
       {/* Action */}
       <div className="px-5 pb-5" onClick={e => e.stopPropagation()}>
+        {/* OPEN: show enter button when connected; connect prompt when not */}
+        {state === 0 && !address && (
+          <div className="w-full flex justify-center">
+            <ConnectKitButton />
+          </div>
+        )}
         {state === 0 && address && !hasEntered && (
           <button
             onClick={handleEnter}
@@ -111,6 +118,7 @@ export function LotCard({ lotId, onSelectLot }: LotCardProps) {
             {isBusy ? t('lot.processing') : t('lot.enterFree')}
           </button>
         )}
+        {/* ACTIVE: winner buy button */}
         {state === 3 && isWinner && (
           <button
             onClick={() => onSelectLot(lotId)}
