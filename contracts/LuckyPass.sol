@@ -224,20 +224,23 @@ contract LuckyPass is D20VRFConsumer, ERC721, Ownable, IERC5192 {
 
     // ─── Lot management ───────────────────────────────────────────────────────
 
+    /// @notice Tag an address as an approved store (legacy allowlist, not enforced by createLot).
+    /// @dev createLot is permissionless; this mapping is preserved for off-chain UIs and future use.
     function approveStore(address store) external onlyOwner {
         if (store == address(0)) revert ZeroAddress();
         isApprovedStore[store] = true;
         emit StoreApproved(store);
     }
 
-    /// @notice Revoke a store from creating new lots.
-    /// @dev Existing lots and their merchant rights remain unchanged, and purchased SBTs stay redeemable.
+    /// @notice Remove an address from the legacy approved-store list.
+    /// @dev Does NOT prevent the address from creating lots; createLot is permissionless.
     function revokeStore(address store) external onlyOwner {
         isApprovedStore[store] = false;
         emit StoreRevoked(store);
     }
 
-    /// @notice Create a new lot. priceUsdc is 6-decimal USDC.
+    /// @notice Create a new lot. Anyone may call; msg.sender becomes the lot's merchantAddress.
+    /// @dev priceUsdc is 6-decimal USDC.
     function createLot(
         string calldata name,
         string calldata description,
@@ -249,7 +252,7 @@ contract LuckyPass is D20VRFConsumer, ERC721, Ownable, IERC5192 {
         uint64 entryCloseAt,
         uint64 fixedDeadlineAt
     ) external returns (uint256 lotId) {
-        if (!isApprovedStore[msg.sender]) revert NotApprovedStore();
+        // No allowlist check — createLot is permissionless.
         if (supply == 0) revert LotNotOpen();
         if (maxEntrants == 0 || maxEntrants < supply) revert LotNotOpen();
         if (maxEntrants > MAX_ENTRANTS) revert LotNotOpen(); // hard protocol cap

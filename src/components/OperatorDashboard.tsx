@@ -3,8 +3,7 @@ import { useAccount, useBalance, usePublicClient } from 'wagmi'
 import { Plus, Zap, Users, ChevronDown, ChevronUp, ExternalLink, Globe, CheckCircle, Copy, Check, Loader } from 'lucide-react'
 import { parseUnits, formatUnits } from 'viem'
 import { getLotImage, setLotImage } from '@/lib/lot-images'
-import { arcTestnet } from 'viem/chains'
-import { buildTxExplorerUrl } from '@/onchain-facts'
+import { CHAIN_ID, buildTxUrl } from '@/lib/chain-config'
 import {
   useLotCount, useLot, useEntrantCount, useWaitlistLength,
   useCreateLot, useRequestDraw, useSelectWinners, useSetVenueOperator, usePromoteWaitlist,
@@ -14,7 +13,7 @@ import { useLocale } from '@/i18n/LocaleContext'
 import { DateTimePicker } from '@/components/DateTimePicker'
 import { toast } from 'sonner'
 
-const CHAIN_ID = arcTestnet.id
+// CHAIN_ID imported from chain-config
 
 // ── Coarse clock (30 s resolution) for deadline checks ───────────────────────
 // useSyncExternalStore is the lint-safe way to subscribe to an external timer
@@ -199,7 +198,7 @@ function LotRow({ lotId }: LotRowProps) {
                 )
               )}
               {requestDraw.hash && (
-                <a href={buildTxExplorerUrl(CHAIN_ID, requestDraw.hash)} target="_blank" rel="noopener noreferrer"
+                <a href={buildTxUrl(requestDraw.hash)} target="_blank" rel="noopener noreferrer"
                    className="flex items-center gap-1 text-xs text-blue-600">
                   <ExternalLink size={10} /> {t('op.viewTx')}
                 </a>
@@ -642,7 +641,7 @@ function CreateLotForm({ onClose, onCreated }: CreateLotFormProps) {
             <span className="text-sm font-semibold">{t('toast.createSuccess')}</span>
           </div>
           {createLot.hash && (
-            <a href={buildTxExplorerUrl(CHAIN_ID, createLot.hash)} target="_blank" rel="noopener noreferrer"
+            <a href={buildTxUrl(createLot.hash)} target="_blank" rel="noopener noreferrer"
                className="flex items-center gap-1.5 text-xs text-blue-600 hover:text-blue-800">
               <ExternalLink size={12} /> {t('op.viewTx')}
             </a>

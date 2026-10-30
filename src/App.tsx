@@ -1,12 +1,11 @@
 import { useState, useEffect, useCallback } from 'react'
 import { useAccount, useChainId } from 'wagmi'
 import { ConnectKitButton } from 'connectkit'
-import { Ticket, Settings, Building2, Shield, AlertTriangle, Lock, Wifi, BookOpen } from 'lucide-react'
+import { Ticket, Settings, Building2, Shield, BookOpen, AlertTriangle, Lock, Wifi } from 'lucide-react'
 import { arcTestnet } from 'viem/chains'
 import { LotGrid } from './components/LotGrid'
 import { PurchaseFlow } from './components/PurchaseFlow'
 import { OperatorDashboard } from './components/OperatorDashboard'
-import { StoreManager } from './components/StoreManager'
 import { RedemptionView } from './components/RedemptionView'
 import { ManualPage } from './components/ManualPage'
 import { ChainGuard } from './components/ChainGuard'
@@ -27,7 +26,7 @@ type Route =
   | { page: 'buyer-lot'; lotId: bigint }
   | { page: 'store'; storeView: StoreView }
 
-type StoreView = 'operator' | 'storemanager' | 'redeem' | 'manual'
+type StoreView = 'operator' | 'redeem' | 'manual'
 
 function parseHash(hash: string): Route {
   const h = hash.replace(/^#\/?/, '')
@@ -185,10 +184,9 @@ function StoreTabBar({ view, setView, t }: StoreTabBarProps) {
   const inactive = 'border-b-2 border-transparent text-gray-500 hover:text-gray-700'
 
   const tabs: { id: StoreView; label: string; icon: React.ReactNode }[] = [
-    { id: 'operator',     label: t('nav.operations'), icon: <Settings size={14} /> },
-    { id: 'storemanager', label: t('nav.storeAdmin'),  icon: <Building2 size={14} /> },
-    { id: 'redeem',       label: t('nav.redeem'),      icon: <Shield size={14} /> },
-    { id: 'manual',       label: t('nav.manual'),      icon: <BookOpen size={14} /> },
+    { id: 'operator', label: t('nav.operations'), icon: <Settings size={14} /> },
+    { id: 'redeem',   label: t('nav.redeem'),      icon: <Shield size={14} /> },
+    { id: 'manual',   label: t('nav.manual'),      icon: <BookOpen size={14} /> },
   ]
 
   return (
@@ -225,8 +223,8 @@ function StoreApp({ initialView, navigate }: StoreAppProps) {
   const view = initialView
 
   const isCorrectChain = chainId === arcTestnet.id
-  // Role check — lotId=1n for now (only one lot in this deployment)
-  const { isOwner, canManage } = useRole(1n)
+  // canManage = wallet connected (createLot is permissionless)
+  const { canManage } = useRole(1n)
 
   // When tab changes update hash; navigating back via browser also updates initialView
   // which re-renders StoreApp with new initialView, so view follows without a useEffect.
@@ -272,20 +270,6 @@ function StoreApp({ initialView, navigate }: StoreAppProps) {
             t={t}
           >
             <OperatorDashboard />
-          </PermissionGate>
-        )}
-
-        {/* 店舗管理 */}
-        {view === 'storemanager' && (
-          <PermissionGate
-            isConnected={isConnected}
-            isCorrectChain={isCorrectChain}
-            hasPermission={isOwner}
-            titleKey="gate.notAdminTitle"
-            descKey="gate.notAdminDesc"
-            t={t}
-          >
-            <StoreManager />
           </PermissionGate>
         )}
 

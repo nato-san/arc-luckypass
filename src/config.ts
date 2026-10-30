@@ -12,15 +12,17 @@
 
 import { http, createConfig } from 'wagmi'
 import { mainnet } from 'wagmi/chains'
-import { arcTestnet } from 'viem/chains'
+import { arc, arcTestnet } from 'viem/chains'
 import { injected, coinbaseWallet, walletConnect } from 'wagmi/connectors'
 import { registerChain } from './tracing'
+import { IS_TESTNET, RPC_URL, CHAIN_ID } from '@/lib/chain-config'
 
-// Explicit RPC URLs — wagmi requires a non-empty transport to resolve chain objects
-const ARC_TESTNET_RPC = arcTestnet.rpcUrls.default.http[0]  // https://rpc.testnet.arc.io
+// Active chain (Testnet or Mainnet, driven by VITE_CHAIN env var)
+const ACTIVE_CHAIN    = IS_TESTNET ? arcTestnet : arc
+const ACTIVE_CHAIN_RPC = RPC_URL
 
 // Pre-register chain RPC URLs so trace events show correct chain names immediately
-registerChain(arcTestnet.id, arcTestnet.rpcUrls.default.http[0])
+registerChain(CHAIN_ID, ACTIVE_CHAIN_RPC)
 
 const APP_NAME = 'Arc LuckyPass'
 const WC_PROJECT_ID = import.meta.env.VITE_WALLETCONNECT_PROJECT_ID as string | undefined
@@ -52,13 +54,15 @@ const connectors = [
 export const config = createConfig({
   // mainnet is listed first so WalletConnect uses it as the required namespace
   // when establishing a mobile session. MetaMask mobile recognises mainnet and
-  // accepts the session; ChainGuard then prompts the user to switch to Arc Testnet
-  // before any transaction is allowed. All write hooks have chainId: arcTestnet.id
-  // so no transaction can be sent on mainnet regardless of the connected chain.
-  chains: [mainnet, arcTestnet],
+  // accepts the session; ChainGuard then prompts the user to switch to the active
+  // Arc chain before any transaction is allowed.
+  chains: [mainnet, ACTIVE_CHAIN],
   connectors,
   transports: {
-    [arcTestnet.id]: http(ARC_TESTNET_RPC),
-    [mainnet.id]: http(), // ENS resolution + WalletConnect required namespace
+    // Both Arc Testnet and Arc Mainnet entries are required by TypeScript even
+    // though only one chain is active at runtime (driven by VITE_CHAIN).
+    [arc.id]:        http(IS_TESTNET ? undefined : ACTIVE_CHAIN_RPC),
+    [arcTestnet.id]: http(IS_TESTNET ? ACTIVE_CHAIN_RPC : undefined),
+    [mainnet.id]:    http(), // ENS resolution + WalletConnect required namespace
   },
 })

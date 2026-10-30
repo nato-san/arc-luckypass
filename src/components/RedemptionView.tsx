@@ -1,9 +1,9 @@
 import { useState, useRef, useEffect, useCallback } from 'react'
 import { useAccount, usePublicClient } from 'wagmi'
 import { ArrowLeft, Shield, CheckCircle, XCircle, Loader, Camera, Keyboard } from 'lucide-react'
-import { arcTestnet } from 'viem/chains'
+import { CHAIN_ID, buildTxUrl } from '@/lib/chain-config'
 import { ContractFunctionRevertedError } from 'viem'
-import { buildTxExplorerUrl } from '@/onchain-facts'
+
 import { parseSignedQrPayload, shortHash, shortAddress } from '@/lib/redemption-challenge'
 import type { SignedQrPayload } from '@/lib/redemption-challenge'
 import { LUCKY_PASS_ADDRESS, LUCKY_PASS_ABI } from '@/lib/luckypass-abi'
@@ -13,7 +13,7 @@ import { toast } from 'sonner'
 import { BrowserQRCodeReader } from '@zxing/browser'
 import { NotFoundException, ChecksumException, FormatException } from '@zxing/library'
 
-const CHAIN_ID = arcTestnet.id
+// CHAIN_ID imported from chain-config
 const REDEMPTION_EXPIRY = 300 // must match contract
 
 type InputMode = 'scan' | 'manual'
@@ -486,7 +486,7 @@ export function RedemptionView({ onBack }: RedemptionViewProps) {
             <p className="text-sm text-gray-500">{t('redeem.doneDesc')}</p>
             {redeem.hash && (
               <a
-                href={buildTxExplorerUrl(CHAIN_ID, redeem.hash)}
+                href={buildTxUrl(redeem.hash)}
                 target="_blank"
                 rel="noopener noreferrer"
                 className="text-xs text-blue-600 hover:text-blue-800 font-mono"

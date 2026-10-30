@@ -1,6 +1,6 @@
 // Auto-generated from forge build. Do not edit manually.
 // Contract: LuckyPass (Arc Testnet)
-export const LUCKY_PASS_ADDRESS = '0xab7678c528f1d517d642c13e3fd97124a743abe8' as const
+export { LUCKY_PASS_CONTRACT_ADDRESS as LUCKY_PASS_ADDRESS } from '@/lib/chain-config'
 
 export const LUCKY_PASS_ABI = [
   {

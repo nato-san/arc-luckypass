@@ -146,10 +146,8 @@ contract LuckyPassTest is Test {
         vm.deal(owner,    1 ether);
         vm.deal(merchant, 1 ether);
 
-        // Approve merchant as a store, then create lot as merchant.
+        // createLot is now permissionless — no approveStore needed.
         // entryOpenAt=0 (open immediately), entryCloseAt=now+100, fixedDeadlineAt=0
-        vm.prank(owner);
-        lp.approveStore(merchant);
 
         LOT1_CLOSE_AT = uint64(block.timestamp + 100);
 
@@ -619,17 +617,87 @@ contract LuckyPassTest is Test {
         lp.redeem(tokenId, sig, nonce, ts);
     }
 
-    // ─── Access control (existing) ────────────────────────────────────────────
+    // ─── Access control ───────────────────────────────────────────────────────
 
-    /// @dev Unapproved wallet cannot create a lot → NotApprovedStore revert
-    function test_onlyApprovedStoreCanCreateLot() public {
+    /// @dev createLot is permissionless — any wallet can create a lot
+    function test_anyoneCanCreateLot() public {
+        // alice has never been approveStore'd
+        uint64 closeAt = uint64(block.timestamp + 100);
         vm.prank(alice);
-        vm.expectRevert(LuckyPass.NotApprovedStore.selector);
-        lp.createLot(
-            "x", "y",
+        uint256 newLotId = lp.createLot(
+            "Alice Lot", "created by alice",
             PRICE, 1, WINDOW, uint32(100),
-            0, uint64(block.timestamp + 100), 0
+            0, closeAt, 0
         );
+        // merchantAddress must be alice (msg.sender)
+        (, , , , , address merch, , , , , , ) = lp.getLot(newLotId);
+        assertEq(merch, alice);
+    }
+
+    /// @dev A wallet cannot manage another wallet's lot
+    function test_cannotManageOtherMerchantLot() public {
+        // alice creates her own lot
+        uint64 closeAt = uint64(block.timestamp + 100);
+        vm.prank(alice);
+        uint256 aliceLotId = lp.createLot(
+            "Alice Lot", "desc",
+            PRICE, 1, WINDOW, uint32(100),
+            0, closeAt, 0
+        );
+
+        // bob cannot set venue operator on alice's lot
+        vm.prank(bob);
+        vm.expectRevert(LuckyPass.NotLotMerchant.selector);
+        lp.setVenueOperator(aliceLotId, bob, true);
+
+        // merchant (lot 1 owner) cannot manage alice's lot
+        vm.warp(closeAt);
+        vm.prank(merchant);
+        vm.expectRevert(LuckyPass.NotLotMerchant.selector);
+        lp.requestDraw{value: VRF_FEE}(aliceLotId);
+    }
+
+    /// @dev Lot merchant can set themselves as venue operator and perform redemption
+    function test_merchantCanSetSelfAsVenueOperator() public {
+        // Use a keyed address so we can produce an EIP-712 signature
+        uint256 buyerPrivKey = 0xB0B;
+        address buyer = vm.addr(buyerPrivKey);
+        usdc.mint(buyer, 100e6);
+        vm.deal(buyer, 1 ether);
+
+        // merchant sets themselves as venue operator for lot 1
+        vm.prank(merchant);
+        lp.setVenueOperator(1, merchant, true);
+        assertTrue(lp.isVenueOperator(1, merchant));
+
+        // buyer enters and wins
+        uint64 closeAt = LOT1_CLOSE_AT;
+        vm.prank(buyer); lp.enter(1);
+        vm.warp(closeAt);
+        uint256 rid = _requestDraw();
+        coord.deliverRandomness(rid, keccak256("merchant-self-op"));
+        lp.selectWinners(1);
+        require(lp.isWinner(1, buyer), "buyer must win with this seed");
+
+        // buyer purchases
+        vm.prank(buyer); usdc.approve(address(lp), PRICE);
+        vm.prank(buyer); uint256 tid = lp.purchase(1);
+
+        // Build EIP-712 redemption signature as buyer
+        uint256 nonce = lp.redemptionNonce(tid);
+        uint256 ts = block.timestamp;
+        bytes32 structHash = keccak256(abi.encode(
+            keccak256("RedemptionChallenge(uint256 tokenId,address contractAddress,uint256 chainId,uint256 nonce,uint256 timestamp)"),
+            tid, address(lp), block.chainid, nonce, ts
+        ));
+        bytes32 digest = MessageHashUtils.toTypedDataHash(lp.domainSeparator(), structHash);
+        (uint8 v, bytes32 r, bytes32 s) = vm.sign(buyerPrivKey, digest);
+        bytes memory sig = abi.encodePacked(r, s, v);
+
+        // merchant (as venue operator) redeems
+        vm.prank(merchant);
+        lp.redeem(tid, sig, nonce, ts);
+        assertTrue(lp.isRedeemed(tid));
     }
 
     /// @dev Only the lot's merchant can set a venue operator (not arbitrary caller)
@@ -691,9 +759,9 @@ contract LuckyPassTest is Test {
         console2.log("Merchant balance (USDC units):", usdc.balanceOf(merchant));
     }
 
-    // ─── New permission model tests ───────────────────────────────────────────
+    // ─── approveStore / revokeStore (legacy allowlist — not enforced by createLot) ──
 
-    /// 1. Non-owner cannot approveStore
+    /// approveStore is still onlyOwner (legacy function preserved)
     function test_approveStore_onlyOwner() public {
         vm.prank(alice);
         vm.expectRevert(
@@ -702,7 +770,7 @@ contract LuckyPassTest is Test {
         lp.approveStore(carol);
     }
 
-    /// 2. Non-owner cannot revokeStore
+    /// revokeStore is still onlyOwner (legacy function preserved)
     function test_revokeStore_onlyOwner() public {
         vm.prank(alice);
         vm.expectRevert(
@@ -711,61 +779,37 @@ contract LuckyPassTest is Test {
         lp.revokeStore(merchant);
     }
 
-    /// 3. Unapproved wallet cannot createLot → NotApprovedStore
-    function test_createLot_notApprovedStore() public {
+    /// approveStore/revokeStore still toggle the mapping, but do NOT gate createLot
+    function test_approveStore_togglesMapping_notGating() public {
+        // carol is not approved — but can still create a lot (permissionless)
+        assertFalse(lp.isApprovedStore(carol));
+        uint64 closeAt = uint64(block.timestamp + 100);
         vm.prank(carol);
-        vm.expectRevert(LuckyPass.NotApprovedStore.selector);
-        lp.createLot(
-            "Bad Lot", "nope",
+        uint256 lotId = lp.createLot(
+            "Carol Lot", "no approval needed",
             PRICE, 1, WINDOW, uint32(100),
-            0, uint64(block.timestamp + 100), 0
+            0, closeAt, 0
         );
-    }
+        assertGt(lotId, 0);
 
-    /// 4. Approved wallet CAN createLot, and lots[lotId].merchantAddress == msg.sender
-    function test_createLot_approvedStore() public {
-        address newStore = address(0xBEEF);
-        vm.deal(newStore, 1 ether);
-
+        // owner can still set the mapping (for off-chain UIs)
         vm.prank(owner);
-        lp.approveStore(newStore);
+        lp.approveStore(carol);
+        assertTrue(lp.isApprovedStore(carol));
 
-        vm.prank(newStore);
-        uint256 newLotId = lp.createLot(
-            "Store Lot", "desc",
-            PRICE, 1, WINDOW, uint32(100),
-            0, uint64(block.timestamp + 100), 0
-        );
-
-        // merchantAddress should be newStore (msg.sender at createLot)
-        (, , , , , address merch, , , , , , ) = lp.getLot(newLotId);
-        assertEq(merch, newStore);
-    }
-
-    /// 5. Revoking a store prevents NEW lot creation; existing lots remain active
-    function test_revokeStore_blocksNewLots() public {
-        // Revoke merchant's approval
+        // revokeStore removes from mapping but does NOT prevent new lots
         vm.prank(owner);
-        lp.revokeStore(merchant);
+        lp.revokeStore(carol);
+        assertFalse(lp.isApprovedStore(carol));
 
-        // Existing lot (lotId=1) should still exist and be manageable
-        (, , , , , address merch, LuckyPass.LotState state, , , , , ) = lp.getLot(1);
-        assertEq(merch, merchant);
-        assertEq(uint8(state), uint8(LuckyPass.LotState.OPEN));
-
-        // Merchant can still manage existing lots (e.g. set venue operator)
-        vm.prank(merchant);
-        lp.setVenueOperator(1, carol, true);
-        assertTrue(lp.isVenueOperator(1, carol));
-
-        // But merchant CANNOT create a new lot after revocation
-        vm.prank(merchant);
-        vm.expectRevert(LuckyPass.NotApprovedStore.selector);
-        lp.createLot(
-            "New Lot After Revoke", "blocked",
+        // carol can STILL create another lot after revocation
+        vm.prank(carol);
+        uint256 lotId2 = lp.createLot(
+            "Carol Lot 2", "still works",
             PRICE, 1, WINDOW, uint32(100),
-            0, uint64(block.timestamp + 100), 0
+            0, closeAt, 0
         );
+        assertGt(lotId2, lotId);
     }
 
     /// 6. A different wallet cannot requestDraw on another merchant's lot
@@ -811,9 +855,7 @@ contract LuckyPassTest is Test {
         vm.deal(storeA, 1 ether);
         vm.deal(storeB, 1 ether);
 
-        // Approve both stores
-        vm.prank(owner); lp.approveStore(storeA);
-        vm.prank(owner); lp.approveStore(storeB);
+        // createLot is permissionless — no approveStore needed
 
         uint64 closeAt = uint64(block.timestamp + 100);
 

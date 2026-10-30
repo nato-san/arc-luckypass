@@ -13,7 +13,7 @@
 
 import { useState } from 'react'
 import { useSwitchChain, useAccount } from 'wagmi'
-import { arcTestnet } from 'viem/chains'
+import { CHAIN_ID as ACTIVE_CHAIN_ID } from '@/lib/chain-config'
 import { AlertTriangle, RefreshCw } from 'lucide-react'
 import { useLocale } from '../i18n/LocaleContext'
 
@@ -24,12 +24,12 @@ export function ChainGuard() {
   const [switchError, setSwitchError] = useState<string | null>(null)
 
   // Nothing to show when not connected or already on Arc Testnet
-  if (!isConnected || chainId === arcTestnet.id) return null
+  if (!isConnected || chainId === ACTIVE_CHAIN_ID) return null
 
   const handleSwitch = () => {
     setSwitchError(null)
     switchChain(
-      { chainId: arcTestnet.id },
+      { chainId: ACTIVE_CHAIN_ID },
       {
         onError(err) {
           // 4001 = user rejected; 4902 = chain not added (wagmi auto-retries)

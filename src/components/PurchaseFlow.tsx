@@ -7,8 +7,7 @@ import {
   Calendar, Clock, WifiOff,
 } from 'lucide-react'
 import { formatUsdc } from '@/onchain-money'
-import { arcTestnet } from 'viem/chains'
-import { buildTxExplorerUrl } from '@/onchain-facts'
+import { CHAIN_ID, buildTxUrl } from '@/lib/chain-config'
 import {
   useLot, useIsWinner, useUsdcAllowance, useApproveUsdc, usePurchase,
   useWinnerPurchaseState, useHasEntered, useEntrantCount, useEnter,
@@ -20,7 +19,7 @@ import { LOT_STATE_COLORS } from '@/lib/lot-constants'
 import { getLotImage } from '@/lib/lot-images'
 import { toast } from 'sonner'
 
-const CHAIN_ID = arcTestnet.id
+// CHAIN_ID imported from chain-config
 
 // VRF polling constants
 const VRF_POLL_INTERVAL_MS  = 8_000   // check every 8 s while DRAWING/WORD_RECEIVED
@@ -356,7 +355,7 @@ export function PurchaseFlow({ lotId, onBack }: PurchaseFlowProps) {
           {/* Tx explorer link */}
           {enter.hash && (
             <a
-              href={buildTxExplorerUrl(CHAIN_ID, enter.hash)}
+              href={buildTxUrl(enter.hash)}
               target="_blank" rel="noopener noreferrer"
               className="flex items-center gap-1.5 text-xs text-blue-600 hover:text-blue-800"
             >
@@ -644,7 +643,7 @@ export function PurchaseFlow({ lotId, onBack }: PurchaseFlowProps) {
         {purchase.hash && (
           <div className="px-6 pb-6">
             <a
-              href={buildTxExplorerUrl(CHAIN_ID, purchase.hash)}
+              href={buildTxUrl(purchase.hash)}
               target="_blank" rel="noopener noreferrer"
               className="flex items-center gap-1.5 text-xs text-blue-600 hover:text-blue-800"
             >

@@ -1,14 +1,11 @@
 import { useReadContract, useReadContracts, useWriteContract, useWaitForTransactionReceipt, useAccount } from 'wagmi'
 import { useQueryClient, type Query } from '@tanstack/react-query'
 import { erc20Abi } from 'viem'
-import { arcTestnet } from 'viem/chains'
 import { LUCKY_PASS_ADDRESS, LUCKY_PASS_ABI } from '@/lib/luckypass-abi'
-import { getUsdc } from '@/onchain-facts'
+import { CHAIN_ID, USDC_CONTRACT_ADDRESS } from '@/lib/chain-config'
 import { useEffect } from 'react'
 
-const CHAIN_ID = arcTestnet.id
-const usdc = getUsdc(CHAIN_ID)
-export const USDC_ADDRESS = usdc?.address as `0x${string}`
+export const USDC_ADDRESS = USDC_CONTRACT_ADDRESS
 
 // ─── Query invalidation helpers ───────────────────────────────────────────────
 // wagmi v2 stores readContract results under:
@@ -515,8 +512,9 @@ export function useRole(lotId?: bigint) {
 
   const isOwner = !!address && !!ownerAddr && address.toLowerCase() === ownerAddr.toLowerCase()
   const isApprovedStore = !!approvedStore
-  // can manage = platform admin OR approved merchant
-  const canManage = isOwner || isApprovedStore
+  // createLot is now permissionless — any connected wallet can manage their own lots.
+  // isApprovedStore is kept for legacy display (e.g. owner-tagged stores), but no longer gates access.
+  const canManage = !!address   // wallet connected = can create and manage own lots
 
   return { isOwner, isApprovedStore, canManage, isOperator: !!isOperator, isWinner: !!isWinnerAddr, address }
 }

@@ -53,7 +53,7 @@ Arc LuckyPass は、Arc ブロックチェーン上で動作する、限定商�
 | コントラクト | Solidity 0.8.28 / Foundry / OpenZeppelin 5.1 / @d20dao/vrf-sdk |
 | フロントエンド | React 18 / Vite / TypeScript / Tailwind CSS |
 | Web3 | wagmi v2 / viem v2 / ConnectKit |
-| チェーン | Arc Testnet（Chain ID: 5042002）/ USDC がネイティブガストークン |
+| チェーン | Arc Testnet (Chain ID: 5042002) / Arc Mainnet (Chain ID: 5042) / USDC がネイティブガストークン |
 | 開発環境 | Arc Studio（Built with Arc Studio） |
 
 ### デプロイ済みコントラクト（Arc Testnet）
@@ -63,7 +63,7 @@ Arc LuckyPass は、Arc ブロックチェーン上で動作する、限定商�
 | v3 — 応募期間・絶対日時締切（現行） | `0xab7678c528f1d517d642c13e3fd97124a743abe8` | [View](https://explorer.testnet.arc.io/address/0xab7678c528f1d517d642c13e3fd97124a743abe8) |
 | v2 — マルチストア（非推奨） | `0x101c391d239a647d590d8493aae1dd5770f4a33a` | [View](https://explorer.testnet.arc.io/address/0x101c391d239a647d590d8493aae1dd5770f4a33a) |
 
-> Mainnet へのデプロイは未実施です。
+> Mainnet コントラクトは別途デプロイ後にアドレスをここに追加します。
 
 ### セットアップ手順
 
@@ -170,7 +170,7 @@ Arc LuckyPass is a lottery-based platform for limited-edition merchandise and ev
 | Contract | Solidity 0.8.28 / Foundry / OpenZeppelin 5.1 / @d20dao/vrf-sdk |
 | Frontend | React 18 / Vite / TypeScript / Tailwind CSS |
 | Web3 | wagmi v2 / viem v2 / ConnectKit |
-| Chain | Arc Testnet (Chain ID: 5042002) / USDC as native gas token |
+| Chain | Arc Testnet (Chain ID: 5042002) / Arc Mainnet (Chain ID: 5042) / USDC as native gas token |
 | Development | Arc Studio |
 
 ### Deployed Contracts (Arc Testnet)
@@ -180,7 +180,7 @@ Arc LuckyPass is a lottery-based platform for limited-edition merchandise and ev
 | v3 — entry window + fixed deadline (current) | `0xab7678c528f1d517d642c13e3fd97124a743abe8` | [View](https://explorer.testnet.arc.io/address/0xab7678c528f1d517d642c13e3fd97124a743abe8) |
 | v2 — multi-store (deprecated) | `0x101c391d239a647d590d8493aae1dd5770f4a33a` | [View](https://explorer.testnet.arc.io/address/0x101c391d239a647d590d8493aae1dd5770f4a33a) |
 
-> Mainnet deployment: not yet deployed.
+> Mainnet contract address will be added here after deployment.
 
 ### Setup
 
@@ -220,6 +220,9 @@ bun run check
 | Variable | Required | Description |
 |---|---|---|
 | `VITE_WALLETCONNECT_PROJECT_ID` | Optional | Reown/WalletConnect Project ID. Without it, only injected wallets work. Get one free at [cloud.reown.com](https://cloud.reown.com). |
+| `VITE_CHAIN` | Optional | Set to `mainnet` to target Arc Mainnet. Omit or leave blank for Testnet (default). |
+| `VITE_LUCKY_PASS_ADDRESS_MAINNET` | Required for Mainnet | Address of the LuckyPass contract deployed on Arc Mainnet. |
+| `VITE_DEPLOY_BLOCK_MAINNET` | Recommended for Mainnet | Deploy block number — used as the getLogs lower bound to speed up event scans. |
 
 ### Pushing updates to GitHub
 
