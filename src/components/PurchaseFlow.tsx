@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react'
 import { useAccount } from 'wagmi'
 import { ConnectKitButton } from 'connectkit'
-import { ArrowLeft, Check, AlertCircle, ExternalLink, Loader, RefreshCw, CheckCircle, Users, Trophy, Ticket, Lock } from 'lucide-react'
+import { ArrowLeft, Check, AlertCircle, ExternalLink, Loader, RefreshCw, CheckCircle, Users, Trophy, Ticket, Lock, Calendar } from 'lucide-react'
 import { formatUsdc } from '@/onchain-money'
 import { arcTestnet } from 'viem/chains'
 import { buildTxExplorerUrl } from '@/onchain-facts'
@@ -12,6 +12,7 @@ import {
 import { TicketQR } from './TicketQR'
 import { useLocale } from '@/i18n/LocaleContext'
 import { LOT_STATE_COLORS } from '@/lib/lot-constants'
+import { getLotImage } from '@/lib/lot-images'
 import { toast } from 'sonner'
 
 const CHAIN_ID = arcTestnet.id
@@ -23,7 +24,7 @@ interface PurchaseFlowProps {
 
 export function PurchaseFlow({ lotId, onBack }: PurchaseFlowProps) {
   const { address } = useAccount()
-  const { t } = useLocale()
+  const { t, locale } = useLocale()
   const { data: lot } = useLot(lotId)
   const { data: isWinner } = useIsWinner(lotId, address)
   const { data: hasEntered, refetch: refetchEntered } = useHasEntered(lotId, address)
@@ -74,7 +75,9 @@ export function PurchaseFlow({ lotId, onBack }: PurchaseFlowProps) {
 
   if (!lot) return null
 
-  const [name, description, priceUsdc, supply, , , stateNum, ticketsMintedBig] = lot
+  const [name, description, priceUsdc, supply, , , stateNum, ticketsMintedBig, , entryOpenAtRaw, entryCloseAtRaw] = lot
+  const entryOpenAt  = Number(entryOpenAtRaw)   // 0 = open immediately
+  const entryCloseAt = Number(entryCloseAtRaw)  // always > 0
   const state = Number(stateNum)
   const price = priceUsdc
   const stateLabel = t(`state.${state}` as `state.${0 | 1 | 2 | 3 | 4}`) ?? 'UNKNOWN'
@@ -134,9 +137,33 @@ export function PurchaseFlow({ lotId, onBack }: PurchaseFlowProps) {
     )
   }
 
+  // ── Date formatter — JST for ja, UTC for en ──────────────────────────────
+  const fmtDate = (unix: number) => {
+    const d = new Date(unix * 1000)
+    if (locale === 'ja') {
+      return d.toLocaleString('ja-JP', { timeZone: 'Asia/Tokyo',
+        year: 'numeric', month: '2-digit', day: '2-digit',
+        hour: '2-digit', minute: '2-digit' }) + ' JST'
+    }
+    return d.toLocaleString('en-US', { timeZone: 'UTC',
+      month: 'short', day: 'numeric', year: 'numeric',
+      hour: '2-digit', minute: '2-digit' }) + ' UTC'
+  }
+
+  const nowSec = Math.floor(Date.now() / 1000)
+  const entryStarted = entryOpenAt === 0 || nowSec >= entryOpenAt
+  const entryClosed  = entryCloseAt > 0 && nowSec >= entryCloseAt
+
   // ── Lot header — shown in all non-QR views ────────────────────────────────
+  const lotImage = getLotImage(lotId)
   const LotHeader = () => (
     <div className="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden mb-4">
+      {/* 商品画像 (localStorage から取得) */}
+      {lotImage && (
+        <div className="w-full bg-gray-50 flex items-center justify-center max-h-48 overflow-hidden">
+          <img src={lotImage} alt={name} className="w-full object-cover max-h-48" onError={e => { (e.target as HTMLImageElement).style.display = 'none' }} />
+        </div>
+      )}
       <div className="p-5 pb-4">
         <div className="flex items-start justify-between gap-2 mb-2">
           <h2 className="text-xl font-semibold text-gray-900 leading-snug">{name}</h2>
@@ -154,6 +181,23 @@ export function PurchaseFlow({ lotId, onBack }: PurchaseFlowProps) {
           {t('lot.remaining')}{remaining}{t('lot.remainingUnit')}
         </span>
       </div>
+      {/* 応募期間バナー */}
+      {entryCloseAt > 0 && (
+        <div className={`px-5 pb-4 flex flex-col gap-1 border-t border-gray-50 pt-3 text-xs ${entryClosed ? 'text-red-600' : !entryStarted ? 'text-amber-600' : 'text-emerald-600'}`}>
+          <span className="flex items-center gap-1 font-medium">
+            <Calendar size={12} />
+            {entryClosed
+              ? t('lot.entryClosed')
+              : !entryStarted
+                ? t('lot.entryNotYet')
+                : t('lot.entryOpen')}
+          </span>
+          {entryOpenAt > 0 && (
+            <span className="text-gray-400">{t('lot.entryFrom')}: {fmtDate(entryOpenAt)}</span>
+          )}
+          <span className="text-gray-400">{t('lot.entryUntil')}: {fmtDate(entryCloseAt)}</span>
+        </div>
+      )}
     </div>
   )
 
@@ -238,6 +282,9 @@ export function PurchaseFlow({ lotId, onBack }: PurchaseFlowProps) {
         <div className="bg-white rounded-2xl border border-gray-100 p-6 text-center space-y-3">
           <Loader size={28} className="mx-auto text-amber-500 animate-spin" />
           <p className="text-sm text-gray-600">
+            {t('lot.entryWaiting')}
+          </p>
+          <p className="text-xs text-gray-400">
             {state === 1 ? t('lot.drawing') : t('lot.wordReceived')}
           </p>
           {address && hasEntered && (

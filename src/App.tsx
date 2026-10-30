@@ -1,13 +1,14 @@
 import { useState, useEffect, useCallback } from 'react'
 import { useAccount, useChainId } from 'wagmi'
 import { ConnectKitButton } from 'connectkit'
-import { Ticket, Settings, Building2, Shield, AlertTriangle, Lock, Wifi } from 'lucide-react'
+import { Ticket, Settings, Building2, Shield, AlertTriangle, Lock, Wifi, BookOpen } from 'lucide-react'
 import { arcTestnet } from 'viem/chains'
 import { LotGrid } from './components/LotGrid'
 import { PurchaseFlow } from './components/PurchaseFlow'
 import { OperatorDashboard } from './components/OperatorDashboard'
 import { StoreManager } from './components/StoreManager'
 import { RedemptionView } from './components/RedemptionView'
+import { ManualPage } from './components/ManualPage'
 import { ChainGuard } from './components/ChainGuard'
 import { useRole } from './hooks/useLuckyPass'
 import { useLocale } from './i18n/LocaleContext'
@@ -26,7 +27,7 @@ type Route =
   | { page: 'buyer-lot'; lotId: bigint }
   | { page: 'store'; storeView: StoreView }
 
-type StoreView = 'operator' | 'storemanager' | 'redeem'
+type StoreView = 'operator' | 'storemanager' | 'redeem' | 'manual'
 
 function parseHash(hash: string): Route {
   const h = hash.replace(/^#\/?/, '')
@@ -187,6 +188,7 @@ function StoreTabBar({ view, setView, t }: StoreTabBarProps) {
     { id: 'operator',     label: t('nav.operations'), icon: <Settings size={14} /> },
     { id: 'storemanager', label: t('nav.storeAdmin'),  icon: <Building2 size={14} /> },
     { id: 'redeem',       label: t('nav.redeem'),      icon: <Shield size={14} /> },
+    { id: 'manual',       label: t('nav.manual'),      icon: <BookOpen size={14} /> },
   ]
 
   return (
@@ -290,6 +292,11 @@ function StoreApp({ initialView, navigate }: StoreAppProps) {
         {/* QR引換 */}
         {view === 'redeem' && (
           <RedemptionView onBack={() => handleSetView('operator')} />
+        )}
+
+        {/* 使い方ガイド */}
+        {view === 'manual' && (
+          <ManualPage onBack={() => handleSetView('operator')} />
         )}
       </main>
     </div>

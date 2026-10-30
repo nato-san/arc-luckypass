@@ -1,19 +1,38 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useSyncExternalStore } from 'react'
 import { useAccount, useBalance, usePublicClient } from 'wagmi'
 import { Plus, Zap, Users, ChevronDown, ChevronUp, ExternalLink, Globe, CheckCircle, Copy, Check, Loader } from 'lucide-react'
 import { parseUnits, formatUnits } from 'viem'
+import { getLotImage, setLotImage } from '@/lib/lot-images'
 import { arcTestnet } from 'viem/chains'
 import { buildTxExplorerUrl } from '@/onchain-facts'
 import {
   useLotCount, useLot, useEntrantCount, useWaitlistLength,
   useCreateLot, useRequestDraw, useSelectWinners, useSetVenueOperator, usePromoteWaitlist,
 } from '@/hooks/useLuckyPass'
-import { LUCKY_PASS_ADDRESS } from '@/lib/luckypass-abi'
+import { LUCKY_PASS_ADDRESS, LUCKY_PASS_ABI } from '@/lib/luckypass-abi'
 import { useLocale } from '@/i18n/LocaleContext'
 import { DateTimePicker } from '@/components/DateTimePicker'
 import { toast } from 'sonner'
 
 const CHAIN_ID = arcTestnet.id
+
+// ── Coarse clock (30 s resolution) for deadline checks ───────────────────────
+// useSyncExternalStore is the lint-safe way to subscribe to an external timer
+// without calling setState inside a useEffect.
+let _clockSubs: Array<() => void> = []
+let _clockNowSec = Math.floor(Date.now() / 1000)
+setInterval(() => {
+  _clockNowSec = Math.floor(Date.now() / 1000)
+  _clockSubs.forEach(cb => cb())
+}, 30_000)
+function subscribeToCoarseClock(cb: () => void) {
+  _clockSubs.push(cb)
+  return () => { _clockSubs = _clockSubs.filter(s => s !== cb) }
+}
+function getCoarseClockSnapshot() { return _clockNowSec }
+function useNowSec() {
+  return useSyncExternalStore(subscribeToCoarseClock, getCoarseClockSnapshot, getCoarseClockSnapshot)
+}
 const VRF_COORDINATOR = '0xd20DA0FF9087d053f0291524Eac12abA1ADBd945' as const
 
 const COORDINATOR_ABI = [
@@ -49,6 +68,8 @@ function LotRow({ lotId }: LotRowProps) {
   const [expanded, setExpanded] = useState(false)
   const [operatorAddr, setOperatorAddr] = useState('')
   const [copiedLotUrl, setCopiedLotUrl] = useState(false)
+  const [lotImageUrl, setLotImageUrl] = useState(() => getLotImage(lotId) ?? '')
+  const [imgSaved, setImgSaved] = useState(false)
   const { data: lot } = useLot(lotId)
   const { data: entrantCount } = useEntrantCount(lotId)
   const { data: waitlistLen } = useWaitlistLength(lotId)
@@ -59,22 +80,47 @@ function LotRow({ lotId }: LotRowProps) {
   const promote = usePromoteWaitlist()
   const publicClient = usePublicClient({ chainId: CHAIN_ID })
 
+  const [showDrawConfirm, setShowDrawConfirm] = useState(false)
+  // 30-second coarse clock — updates via useSyncExternalStore (lint-safe).
+  const nowSec = useNowSec()
+
   if (!lot) return null
 
-  const [name, , , supply, , , stateNum, ticketsMinted] = lot
+  const [name, , , supply, , , stateNum, ticketsMinted, , , entryCloseAtRaw] = lot
   const state = Number(stateNum)
+  const entryCloseAt = Number(entryCloseAtRaw)
+  const entryStillOpen = entryCloseAt > 0 && nowSec < entryCloseAt
 
   const STATE_LABELS: Record<number, string> = {
-    0: 'OPEN', 1: 'DRAWING', 2: 'WORD RECEIVED', 3: 'ACTIVE', 4: 'CLOSED',
+    0: t('state.0'), 1: t('state.1'), 2: t('state.2'), 3: t('state.3'), 4: t('state.4'),
   }
 
   const handleRequestDraw = async () => {
     if (!publicClient) { toast.error(t('op.errNetwork')); return }
     try {
-      // eth_call reports baseFeePerGas=0, so quoteFee() collapses to minFee and the
-      // live tx reverts with IncorrectFee. Fetch the latest block's actual baseFee
-      // and pass it to quoteFeeAt, then add a 30% buffer for base-fee movement
-      // between quote time and inclusion (EIP-1559 can rise 12.5% per block).
+      // ── Onchain pre-flight: confirm lot is still OPEN and entry has closed ──
+      const onchainLot = await publicClient.readContract({
+        address: LUCKY_PASS_ADDRESS,
+        abi: LUCKY_PASS_ABI,
+        functionName: 'getLot',
+        args: [lotId],
+      })
+      // getLot returns a tuple; [6]=state (0=OPEN), [10]=entryCloseAt
+      const onchainState    = Number(onchainLot[6])
+      const onchainCloseAt  = Number(onchainLot[10])
+      const onchainNow      = Math.floor(Date.now() / 1000)
+
+      if (onchainState !== 0) {
+        toast.error(t('op.errDrawNotOpen')); return
+      }
+      if (onchainCloseAt > 0 && onchainNow < onchainCloseAt) {
+        toast.error(t('op.drawNotYet')); return
+      }
+
+      // ── Fee quote: use actual baseFee to avoid IncorrectFee revert ──
+      // eth_call reports baseFeePerGas=0, so quoteFee() collapses to minFee.
+      // Fetch the latest block's baseFee and add 30 % buffer for price movement
+      // between quote time and inclusion (EIP-1559 can rise 12.5 % per block).
       const block = await publicClient.getBlock({ blockTag: 'latest' })
       const baseFee = block.baseFeePerGas ?? 0n
       const baseFeeBuffered = (baseFee * 130n) / 100n
@@ -84,7 +130,7 @@ function LotRow({ lotId }: LotRowProps) {
         functionName: 'quoteFeeAt',
         args: [CALLBACK_GAS, baseFeeBuffered],
       })
-      // Add a small extra 5% on top of the already-buffered quote for safety
+      // Add a small extra 5 % on top of the already-buffered quote for safety
       const value = (fee * 105n) / 100n
       toast.info(`${t('op.vrfFeeInfo')}: ${formatUnits(value, 18)} USDC ${t('op.vrfFeeBuffer')}`)
       requestDraw.requestDraw(lotId, value)
@@ -117,13 +163,41 @@ function LotRow({ lotId }: LotRowProps) {
           {state === 0 && (
             <div className="space-y-2">
               <p className="text-xs text-gray-500">{t('op.stateOpen')}</p>
-              <button
-                onClick={() => { void handleRequestDraw() }}
-                disabled={requestDraw.isPending || requestDraw.isConfirming}
-                className="flex items-center gap-1.5 px-3 py-2 rounded-lg bg-amber-500 text-white text-xs font-medium hover:bg-amber-600 disabled:opacity-50"
-              >
-                <Zap size={12} /> {t('op.requestDraw')}
-              </button>
+              {entryStillOpen && (
+                <p className="text-xs text-blue-700 bg-blue-50 rounded-lg px-3 py-2">
+                  {t('op.drawNotYet')}
+                </p>
+              )}
+              {!entryStillOpen && (
+                !showDrawConfirm ? (
+                  <button
+                    onClick={() => setShowDrawConfirm(true)}
+                    disabled={requestDraw.isPending || requestDraw.isConfirming}
+                    className="flex items-center gap-1.5 px-3 py-2 rounded-lg bg-amber-500 text-white text-xs font-medium hover:bg-amber-600 disabled:opacity-50"
+                  >
+                    <Zap size={12} /> {t('op.requestDraw')}
+                  </button>
+                ) : (
+                  <div className="border border-amber-200 rounded-xl p-3 bg-amber-50 space-y-2">
+                    <p className="text-xs text-amber-800">{t('op.requestDrawConfirm')}</p>
+                    <div className="flex gap-2">
+                      <button
+                        onClick={() => { setShowDrawConfirm(false); void handleRequestDraw() }}
+                        disabled={requestDraw.isPending || requestDraw.isConfirming}
+                        className="flex items-center gap-1.5 px-3 py-2 rounded-lg bg-amber-500 text-white text-xs font-medium hover:bg-amber-600 disabled:opacity-50"
+                      >
+                        <Zap size={12} /> {t('op.requestDrawConfirmOk')}
+                      </button>
+                      <button
+                        onClick={() => setShowDrawConfirm(false)}
+                        className="px-3 py-2 rounded-lg border border-gray-200 text-xs text-gray-600 hover:bg-gray-50"
+                      >
+                        {t('op.requestDrawConfirmCancel')}
+                      </button>
+                    </div>
+                  </div>
+                )
+              )}
               {requestDraw.hash && (
                 <a href={buildTxExplorerUrl(CHAIN_ID, requestDraw.hash)} target="_blank" rel="noopener noreferrer"
                    className="flex items-center gap-1 text-xs text-blue-600">
@@ -176,6 +250,27 @@ function LotRow({ lotId }: LotRowProps) {
               </div>
             )
           })()}
+
+          {/* 商品画像URL */}
+          <div className="space-y-1.5 pt-2 border-t border-gray-50">
+            <p className="text-xs font-medium text-gray-600">{t('op.fieldImageUrl')}</p>
+            <p className="text-xs text-amber-700 bg-amber-50 rounded-lg px-2 py-1">{t('op.imageUrlHint')}</p>
+            <div className="flex gap-2">
+              <input
+                type="url"
+                value={lotImageUrl}
+                onChange={e => { setLotImageUrl(e.target.value); setImgSaved(false) }}
+                placeholder="https://example.com/image.jpg"
+                className="flex-1 min-w-0 px-2.5 py-1.5 rounded-lg border border-gray-200 text-xs focus:outline-none focus:ring-1 focus:ring-violet-500"
+              />
+              <button
+                onClick={() => { setLotImage(lotId, lotImageUrl); setImgSaved(true); setTimeout(() => setImgSaved(false), 2000) }}
+                className="px-2.5 py-1.5 rounded-lg bg-violet-600 text-white text-xs font-medium hover:bg-violet-700 shrink-0"
+              >
+                {imgSaved ? t('op.imageUrlSaved') : t('op.imageUrlSave')}
+              </button>
+            </div>
+          </div>
 
           {/* Venue operator management */}
           <div className="space-y-1.5 pt-2 border-t border-gray-50">
@@ -262,8 +357,9 @@ const WINDOW_PRESETS: Array<{ key: string; seconds: number }> = [
 
 function CreateLotForm({ onClose, onCreated }: CreateLotFormProps) {
   const [form, setForm] = useState({
-    name: '', description: '', priceUsdc: '', supply: '', maxEntrants: '200',
+    name: '', description: '', priceUsdc: '', supply: '', maxEntrants: '200', imageUrl: '',
   })
+  const [imagePreviewError, setImagePreviewError] = useState(false)
   const [copiedUrl, setCopiedUrl] = useState(false)
   // Capture "now" once at mount so minUnix is stable across renders
   const [nowUnix] = useState(() => Math.floor(Date.now() / 1000))
@@ -311,6 +407,10 @@ function CreateLotForm({ onClose, onCreated }: CreateLotFormProps) {
     if (createLot.isSuccess) {
       onCreated()
       toast.success(t('toast.createSuccess'))
+      // Persist image URL to localStorage if provided
+      if (form.imageUrl.trim() && createdLotId !== null) {
+        setLotImage(createdLotId, form.imageUrl)
+      }
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [createLot.isSuccess])
@@ -385,6 +485,33 @@ function CreateLotForm({ onClose, onCreated }: CreateLotFormProps) {
       <h3 className="text-sm font-semibold text-gray-900">{t('op.createTitle')}</h3>
       {field(t('op.fieldName'), 'name', 'text', 'e.g. Limited T-Shirt')}
       {field(t('op.fieldDesc'), 'description', 'text')}
+
+      {/* 商品画像URL (任意・フロントエンドのみ保存) */}
+      <div>
+        <label className="block text-xs text-gray-600 mb-1">{t('op.fieldImageUrl')}</label>
+        <p className="text-xs text-amber-700 bg-amber-50 rounded-lg px-2.5 py-1.5 mb-2">{t('op.imageUrlHint')}</p>
+        <input
+          type="url"
+          value={form.imageUrl}
+          onChange={e => { setForm(p => ({ ...p, imageUrl: e.target.value })); setImagePreviewError(false) }}
+          placeholder="https://example.com/image.jpg"
+          className="w-full px-3 py-2 rounded-lg border border-gray-200 text-sm focus:outline-none focus:ring-2 focus:ring-violet-500"
+        />
+        {form.imageUrl && !imagePreviewError && (
+          <div className="mt-2 rounded-xl overflow-hidden border border-gray-100 bg-gray-50 flex items-center justify-center h-32">
+            <img
+              src={form.imageUrl}
+              alt="preview"
+              className="max-h-32 max-w-full object-contain"
+              onError={() => setImagePreviewError(true)}
+            />
+          </div>
+        )}
+        {imagePreviewError && (
+          <p className="mt-1 text-xs text-red-500">{t('op.imageUrlError')}</p>
+        )}
+      </div>
+
       {field(t('op.fieldPrice'), 'priceUsdc', 'number', 'e.g. 25')}
       {field(t('op.fieldSupply'), 'supply', 'number', 'e.g. 10')}
 
