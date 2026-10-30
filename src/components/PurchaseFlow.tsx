@@ -1,7 +1,11 @@
-import { useState, useEffect } from 'react'
-import { useAccount } from 'wagmi'
+import { useState, useEffect, useRef } from 'react'
+import { useAccount, usePublicClient } from 'wagmi'
 import { ConnectKitButton } from 'connectkit'
-import { ArrowLeft, Check, AlertCircle, ExternalLink, Loader, RefreshCw, CheckCircle, Users, Trophy, Ticket, Lock, Calendar } from 'lucide-react'
+import {
+  ArrowLeft, Check, AlertCircle, ExternalLink, Loader,
+  RefreshCw, CheckCircle, Users, Trophy, Ticket, Lock,
+  Calendar, Clock, WifiOff,
+} from 'lucide-react'
 import { formatUsdc } from '@/onchain-money'
 import { arcTestnet } from 'viem/chains'
 import { buildTxExplorerUrl } from '@/onchain-facts'
@@ -9,6 +13,7 @@ import {
   useLot, useIsWinner, useUsdcAllowance, useApproveUsdc, usePurchase,
   useWinnerPurchaseState, useHasEntered, useEntrantCount, useEnter,
 } from '@/hooks/useLuckyPass'
+import { LUCKY_PASS_ADDRESS, LUCKY_PASS_ABI } from '@/lib/luckypass-abi'
 import { TicketQR } from './TicketQR'
 import { useLocale } from '@/i18n/LocaleContext'
 import { LOT_STATE_COLORS } from '@/lib/lot-constants'
@@ -16,6 +21,11 @@ import { getLotImage } from '@/lib/lot-images'
 import { toast } from 'sonner'
 
 const CHAIN_ID = arcTestnet.id
+
+// VRF polling constants
+const VRF_POLL_INTERVAL_MS  = 8_000   // check every 8 s while DRAWING/WORD_RECEIVED
+const VRF_WARN_AFTER_MS     = 90_000  // show "taking longer than expected" after 90 s
+const VRF_TIMEOUT_MS        = 300_000 // show manual-refresh hint after 5 min
 
 interface PurchaseFlowProps {
   lotId: bigint
@@ -25,14 +35,21 @@ interface PurchaseFlowProps {
 export function PurchaseFlow({ lotId, onBack }: PurchaseFlowProps) {
   const { address } = useAccount()
   const { t, locale } = useLocale()
-  const { data: lot } = useLot(lotId)
-  const { data: isWinner } = useIsWinner(lotId, address)
+  const publicClient = usePublicClient({ chainId: CHAIN_ID })
+
+  const { data: lot, refetch: refetchLot } = useLot(lotId)
+  const { data: isWinner, refetch: refetchIsWinner } = useIsWinner(lotId, address)
   const { data: hasEntered, refetch: refetchEntered } = useHasEntered(lotId, address)
   const { data: entrantCount } = useEntrantCount(lotId)
   const { data: allowance, refetch: refetchAllowance } = useUsdcAllowance(address)
   const approve = useApproveUsdc()
   const purchase = usePurchase()
   const enter = useEnter()
+
+  // VRF polling state
+  const [vrfWaitMs, setVrfWaitMs] = useState(0)
+  const vrfPollRef = useRef<ReturnType<typeof setInterval> | null>(null)
+  const vrfStartRef = useRef<number>(0)
 
   // ── Onchain purchase state ────────────────────────────────────────────────
   const ticketsMinted = lot ? Math.min(Number(lot[7]), 500) : 0
@@ -52,7 +69,8 @@ export function PurchaseFlow({ lotId, onBack }: PurchaseFlowProps) {
   const derivedMintedTokenId: bigint | null = (() => {
     if (!purchase.isSuccess || !purchase.receipt) return null
     for (const log of purchase.receipt.logs) {
-      if (log.address.toLowerCase() === '0xab7678c528f1d517d642c13e3fd97124a743abe8') {
+      if (log.address.toLowerCase() === LUCKY_PASS_ADDRESS.toLowerCase()) {
+        // ERC-721 Transfer(from=0x0, to=address, tokenId) has topics[1]=0x0
         if (log.topics.length === 4 &&
             log.topics[1] === '0x0000000000000000000000000000000000000000000000000000000000000000') {
           return BigInt(log.topics[3])
@@ -62,6 +80,7 @@ export function PurchaseFlow({ lotId, onBack }: PurchaseFlowProps) {
     return null
   })()
 
+  // On purchase success: capture tokenId + hash, then refetch purchase state
   useEffect(() => {
     if (derivedMintedTokenId !== null && sessionTokenId === null) {
       setSessionTokenId(derivedMintedTokenId)
@@ -73,17 +92,60 @@ export function PurchaseFlow({ lotId, onBack }: PurchaseFlowProps) {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [derivedMintedTokenId, purchase.isSuccess, purchase.hash])
 
+  // On approve success: refetch allowance immediately
+  useEffect(() => {
+    if (approve.isSuccess) void refetchAllowance()
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [approve.isSuccess])
+
+  // On enter success: refetch hasEntered
+  useEffect(() => {
+    if (enter.isSuccess) void refetchEntered()
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [enter.isSuccess])
+
+  // ── VRF polling — start when DRAWING or WORD_RECEIVED ────────────────────
+  const stateNum = lot ? Number(lot[6]) : -1
+  const isDrawingOrWord = stateNum === 1 || stateNum === 2
+
+  useEffect(() => {
+    if (!isDrawingOrWord) {
+      // Stop polling when state changes
+      if (vrfPollRef.current) {
+        clearInterval(vrfPollRef.current)
+        vrfPollRef.current = null
+      }
+      setVrfWaitMs(0)
+      return
+    }
+    // Start polling
+    vrfStartRef.current = Date.now()
+    vrfPollRef.current = setInterval(() => {
+      setVrfWaitMs(Date.now() - vrfStartRef.current)
+      void refetchLot()
+      void refetchIsWinner()
+    }, VRF_POLL_INTERVAL_MS)
+
+    return () => {
+      if (vrfPollRef.current) {
+        clearInterval(vrfPollRef.current)
+        vrfPollRef.current = null
+      }
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isDrawingOrWord])
+
   if (!lot) return null
 
-  const [name, description, priceUsdc, supply, , , stateNum, ticketsMintedBig, , entryOpenAtRaw, entryCloseAtRaw] = lot
-  const entryOpenAt  = Number(entryOpenAtRaw)   // 0 = open immediately
-  const entryCloseAt = Number(entryCloseAtRaw)  // always > 0
-  const state = Number(stateNum)
+  const [name, description, priceUsdc, supply, , , stateNumRaw, ticketsMintedBig, , entryOpenAtRaw, entryCloseAtRaw] = lot
+  const entryOpenAt  = Number(entryOpenAtRaw)
+  const entryCloseAt = Number(entryCloseAtRaw)
+  const state = Number(stateNumRaw)
   const price = priceUsdc
   const stateLabel = t(`state.${state}` as `state.${0 | 1 | 2 | 3 | 4}`) ?? 'UNKNOWN'
   const remaining = Number(supply) - Number(ticketsMintedBig)
 
-  // ── Back button — shared across all sub-views ─────────────────────────────
+  // ── Back button ───────────────────────────────────────────────────────────
   const BackBtn = () => (
     <button onClick={onBack} className="flex items-center gap-1.5 text-sm text-gray-500 mb-6 hover:text-gray-700">
       <ArrowLeft size={16} /> {t('purchase.back')}
@@ -124,13 +186,13 @@ export function PurchaseFlow({ lotId, onBack }: PurchaseFlowProps) {
       <div className="max-w-md mx-auto px-4 py-8">
         <BackBtn />
         <div className="bg-white rounded-2xl border border-red-100 p-6 flex flex-col items-center gap-4 text-center">
-          <AlertCircle size={28} className="text-red-400" />
+          <WifiOff size={28} className="text-red-400" />
           <p className="text-sm text-red-700">{t('purchase.stateError')}</p>
           <button
             onClick={() => void refetchPurchaseState()}
             className="flex items-center gap-1.5 text-sm text-violet-600 hover:text-violet-800"
           >
-            <RefreshCw size={14} /> {t('purchase.back')}
+            <RefreshCw size={14} /> {t('purchase.retry')}
           </button>
         </div>
       </div>
@@ -158,10 +220,10 @@ export function PurchaseFlow({ lotId, onBack }: PurchaseFlowProps) {
   const lotImage = getLotImage(lotId)
   const LotHeader = () => (
     <div className="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden mb-4">
-      {/* 商品画像 (localStorage から取得) */}
       {lotImage && (
         <div className="w-full bg-gray-50 flex items-center justify-center max-h-48 overflow-hidden">
-          <img src={lotImage} alt={name} className="w-full object-cover max-h-48" onError={e => { (e.target as HTMLImageElement).style.display = 'none' }} />
+          <img src={lotImage} alt={name} className="w-full object-cover max-h-48"
+               onError={e => { (e.target as HTMLImageElement).style.display = 'none' }} />
         </div>
       )}
       <div className="p-5 pb-4">
@@ -181,16 +243,11 @@ export function PurchaseFlow({ lotId, onBack }: PurchaseFlowProps) {
           {t('lot.remaining')}{remaining}{t('lot.remainingUnit')}
         </span>
       </div>
-      {/* 応募期間バナー */}
       {entryCloseAt > 0 && (
         <div className={`px-5 pb-4 flex flex-col gap-1 border-t border-gray-50 pt-3 text-xs ${entryClosed ? 'text-red-600' : !entryStarted ? 'text-amber-600' : 'text-emerald-600'}`}>
           <span className="flex items-center gap-1 font-medium">
             <Calendar size={12} />
-            {entryClosed
-              ? t('lot.entryClosed')
-              : !entryStarted
-                ? t('lot.entryNotYet')
-                : t('lot.entryOpen')}
+            {entryClosed ? t('lot.entryClosed') : !entryStarted ? t('lot.entryNotYet') : t('lot.entryOpen')}
           </span>
           {entryOpenAt > 0 && (
             <span className="text-gray-400">{t('lot.entryFrom')}: {fmtDate(entryOpenAt)}</span>
@@ -219,19 +276,18 @@ export function PurchaseFlow({ lotId, onBack }: PurchaseFlowProps) {
   if (state === 0) {
     const isBusy = enter.isPending || enter.isConfirming
 
+    // Error classification for enter
+    const enterErrorText = (() => {
+      if (!enter.error) return null
+      const msg = enter.error.message
+      if (msg.includes('User rejected') || msg.includes('user rejected')) return t('purchase.errUserRejected')
+      if (msg.includes('AlreadyEntered')) return t('toast.enterError')
+      return `${t('purchase.errGeneric')}: ${msg.slice(0, 80)}`
+    })()
+
     const handleEnter = () => {
       if (!address) return
       enter.enter(lotId)
-      toast.promise(
-        new Promise<void>((res, rej) => {
-          const check = () => {
-            void refetchEntered().then(r => { if (r.data) res(); else setTimeout(check, 1500) })
-          }
-          setTimeout(check, 2000)
-          setTimeout(() => rej(new Error('timeout')), 30000)
-        }),
-        { loading: t('toast.enterLoading'), success: t('toast.enterSuccess'), error: t('toast.enterError') }
-      )
     }
 
     return (
@@ -239,8 +295,30 @@ export function PurchaseFlow({ lotId, onBack }: PurchaseFlowProps) {
         <BackBtn />
         <LotHeader />
         <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-6 space-y-4">
-          {/* Entered badge */}
-          {address && hasEntered && (
+          {/* Pending tx status */}
+          {enter.isPending && (
+            <div className="flex items-center gap-2 p-3 bg-amber-50 rounded-xl text-sm text-amber-700">
+              <Loader size={14} className="animate-spin shrink-0" />
+              {t('op.txWalletApprove')}
+            </div>
+          )}
+          {enter.isConfirming && (
+            <div className="flex items-center gap-2 p-3 bg-amber-50 rounded-xl text-sm text-amber-700">
+              <Loader size={14} className="animate-spin shrink-0" />
+              {t('op.txConfirming')}
+            </div>
+          )}
+
+          {/* Success */}
+          {enter.isSuccess && (
+            <div className="flex items-center gap-2 p-3 bg-emerald-50 rounded-xl">
+              <CheckCircle size={16} className="text-emerald-600 shrink-0" />
+              <p className="text-sm text-emerald-700 font-medium">{t('lot.entered')}</p>
+            </div>
+          )}
+
+          {/* Entered badge (from onchain) */}
+          {!enter.isSuccess && address && hasEntered && (
             <div className="flex items-center gap-2 p-3 bg-emerald-50 rounded-xl">
               <CheckCircle size={16} className="text-emerald-600 shrink-0" />
               <p className="text-sm text-emerald-700 font-medium">{t('lot.entered')}</p>
@@ -248,16 +326,14 @@ export function PurchaseFlow({ lotId, onBack }: PurchaseFlowProps) {
           )}
 
           {/* Not yet entered */}
-          {!hasEntered && (
+          {!hasEntered && !enter.isSuccess && (
             <>
               {!address ? (
-                /* Wallet not connected — show connect button */
                 <div className="flex flex-col items-center gap-3 py-2">
                   <p className="text-sm text-gray-600 text-center">{t('buyer.connectToEnter')}</p>
                   <ConnectKitButton />
                 </div>
               ) : (
-                /* Connected, not entered — show enter button */
                 <button
                   onClick={handleEnter}
                   disabled={isBusy}
@@ -268,27 +344,71 @@ export function PurchaseFlow({ lotId, onBack }: PurchaseFlowProps) {
               )}
             </>
           )}
+
+          {/* Enter error */}
+          {enterErrorText && (
+            <div className="flex items-start gap-2 p-3 bg-red-50 rounded-xl">
+              <AlertCircle size={14} className="text-red-500 shrink-0 mt-0.5" />
+              <p className="text-xs text-red-700">{enterErrorText}</p>
+            </div>
+          )}
+
+          {/* Tx explorer link */}
+          {enter.hash && (
+            <a
+              href={buildTxExplorerUrl(CHAIN_ID, enter.hash)}
+              target="_blank" rel="noopener noreferrer"
+              className="flex items-center gap-1.5 text-xs text-blue-600 hover:text-blue-800"
+            >
+              <ExternalLink size={12} /> {t('purchase.viewExplorer')}
+            </a>
+          )}
         </div>
       </div>
     )
   }
 
-  // ── DRAWING / WORD_RECEIVED states — waiting for result ───────────────────
+  // ── DRAWING / WORD_RECEIVED states — VRF polling ───────────────────────────
   if (state === 1 || state === 2) {
+    const isLong    = vrfWaitMs >= VRF_WARN_AFTER_MS
+    const isTimeout = vrfWaitMs >= VRF_TIMEOUT_MS
+
     return (
       <div className="max-w-md mx-auto px-4 py-8">
         <BackBtn />
         <LotHeader />
         <div className="bg-white rounded-2xl border border-gray-100 p-6 text-center space-y-3">
-          <Loader size={28} className="mx-auto text-amber-500 animate-spin" />
-          <p className="text-sm text-gray-600">
-            {t('lot.entryWaiting')}
-          </p>
+          {isTimeout ? (
+            <Clock size={28} className="mx-auto text-gray-400" />
+          ) : (
+            <Loader size={28} className="mx-auto text-amber-500 animate-spin" />
+          )}
+          <p className="text-sm text-gray-600">{t('lot.entryWaiting')}</p>
           <p className="text-xs text-gray-400">
             {state === 1 ? t('lot.drawing') : t('lot.wordReceived')}
           </p>
           {address && hasEntered && (
             <p className="text-xs text-emerald-600 font-medium">{t('lot.entered')}</p>
+          )}
+          {/* Long wait warning */}
+          {isLong && !isTimeout && (
+            <p className="text-xs text-amber-600 bg-amber-50 rounded-lg px-3 py-2">
+              {t('lot.drawingLong')}
+            </p>
+          )}
+          {/* Timeout — show manual refresh */}
+          {isTimeout && (
+            <div className="space-y-2">
+              <p className="text-xs text-gray-500 bg-gray-50 rounded-lg px-3 py-2">
+                {t('lot.drawingTimeout')}
+              </p>
+              <button
+                onClick={() => { void refetchLot(); void refetchIsWinner() }}
+                className="flex items-center gap-1.5 text-xs text-violet-600 hover:text-violet-800 mx-auto"
+              >
+                <RefreshCw size={12} /> {t('purchase.retry')}
+              </button>
+            </div>
           )}
         </div>
       </div>
@@ -296,23 +416,17 @@ export function PurchaseFlow({ lotId, onBack }: PurchaseFlowProps) {
   }
 
   // ── ACTIVE state (state === 3) — winner purchase flow ─────────────────────
-  // Not a winner and ticket not already purchased
   if (!isWinner && !isAlreadyPurchased) {
     return (
       <div className="max-w-md mx-auto px-4 py-8">
         <BackBtn />
         <LotHeader />
-
-        {/* Wallet not connected */}
-        {!address && (
+        {!address ? (
           <div className="bg-white rounded-2xl border border-gray-100 p-6 flex flex-col items-center gap-3 text-center">
             <p className="text-sm text-gray-600">{t('buyer.connectToBuy')}</p>
             <ConnectKitButton />
           </div>
-        )}
-
-        {/* Connected but not a winner */}
-        {address && (
+        ) : (
           <div className="bg-white rounded-2xl border border-amber-100 p-6 text-center">
             <AlertCircle size={32} className="mx-auto mb-3 text-amber-500" />
             <p className="text-sm text-gray-700">{t('purchase.notWinner')}</p>
@@ -323,28 +437,61 @@ export function PurchaseFlow({ lotId, onBack }: PurchaseFlowProps) {
     )
   }
 
-  // Winner purchase form
+  // ── Winner purchase form ───────────────────────────────────────────────────
   const hasAllowance = (allowance ?? 0n) >= price
   const priceFormatted = formatUsdc(price)
-  const isApprovePending = approve.isPending || approve.isConfirming
+  const isApprovePending  = approve.isPending || approve.isConfirming
   const isPurchasePending = purchase.isPending || purchase.isConfirming
+
+  // Approve error
+  const approveErrorText = (() => {
+    if (!approve.error) return null
+    const msg = approve.error.message
+    if (msg.includes('User rejected') || msg.includes('user rejected')) return t('purchase.errUserRejected')
+    return `${t('purchase.errGeneric')}: ${msg.slice(0, 80)}`
+  })()
+
+  // Purchase error
+  const purchaseErrorText = (() => {
+    if (!purchase.error) return null
+    const msg = purchase.error.message
+    if (msg.includes('User rejected') || msg.includes('user rejected')) return t('purchase.errUserRejected')
+    if (msg.includes('NotWinner'))        return t('purchase.errNotWinner')
+    if (msg.includes('DeadlineExpired'))  return t('purchase.errDeadline')
+    if (msg.includes('AlreadyPurchased')) return t('purchase.errAlready')
+    if (msg.includes('network') || msg.includes('fetch') || msg.includes('timeout')) return t('purchase.errNetwork')
+    return `${t('purchase.errGeneric')}: ${msg.slice(0, 80)}`
+  })()
 
   const handleApprove = () => {
     approve.approve(price)
-    toast.promise(
-      new Promise<void>((res) => {
-        const check = () => { void refetchAllowance().then(r => { if ((r.data ?? 0n) >= price) res(); else setTimeout(check, 1500) }) }
-        setTimeout(check, 2000)
-      }),
-      { loading: t('toast.approveLoading'), success: t('toast.approveSuccess'), error: t('toast.approveError') }
-    )
   }
 
   const handlePurchase = async () => {
+    if (!publicClient || !address) return
+
+    // Pre-flight: verify onchain purchase state is still clean
+    try {
+      const freshLot = await publicClient.readContract({
+        address: LUCKY_PASS_ADDRESS,
+        abi: LUCKY_PASS_ABI,
+        functionName: 'getLot',
+        args: [lotId],
+      }) as readonly unknown[]
+      const freshState = Number(freshLot[6])
+      if (freshState !== 3) {
+        toast.error(t('purchase.errLotNotActive'))
+        return
+      }
+    } catch {
+      // RPC error on pre-flight: warn but allow proceed
+      toast.warning(t('purchase.warnPreflightFailed'))
+    }
+
+    // Onchain check: already purchased?
     const fresh = await refetchPurchaseState()
     const freshData = fresh.data
-    let freshlyPurchased = false
-    if (freshData && address && lotId !== undefined) {
+    if (freshData && address) {
       const count = freshData.length / 2
       for (let i = 0; i < count; i++) {
         const ownerR = freshData[2 * i]
@@ -357,23 +504,14 @@ export function PurchaseFlow({ lotId, onBack }: PurchaseFlowProps) {
           typeof lotR.result === 'bigint' &&
           lotR.result === lotId
         ) {
-          freshlyPurchased = true
-          break
+          toast.error(t('purchase.errAlready'))
+          return
         }
       }
     }
-    if (freshlyPurchased) { toast.error(t('purchase.errAlready')); return }
+
     purchase.purchase(lotId)
   }
-
-  const purchaseErrorText = (() => {
-    if (!purchase.error) return null
-    const msg = purchase.error.message
-    if (msg.includes('NotWinner'))        return t('purchase.errNotWinner')
-    if (msg.includes('DeadlineExpired'))  return t('purchase.errDeadline')
-    if (msg.includes('AlreadyPurchased')) return t('purchase.errAlready')
-    return `${t('purchase.errGeneric')}: ${msg.slice(0, 80)}`
-  })()
 
   return (
     <div className="max-w-md mx-auto px-4 py-8">
@@ -401,6 +539,7 @@ export function PurchaseFlow({ lotId, onBack }: PurchaseFlowProps) {
 
         {/* Steps */}
         <div className="p-6 space-y-3">
+          {/* Step 1: Approve */}
           <div className={`flex items-center gap-3 p-3 rounded-xl ${hasAllowance ? 'bg-emerald-50' : 'bg-gray-50'}`}>
             <div className={`w-6 h-6 rounded-full flex items-center justify-center text-xs font-bold shrink-0 ${hasAllowance ? 'bg-emerald-500 text-white' : 'bg-gray-200 text-gray-600'}`}>
               {hasAllowance ? <Check size={12} /> : '1'}
@@ -420,6 +559,25 @@ export function PurchaseFlow({ lotId, onBack }: PurchaseFlowProps) {
             )}
           </div>
 
+          {/* Approve status */}
+          {approve.isPending && (
+            <div className="flex items-center gap-2 px-3 py-2 bg-amber-50 rounded-lg text-xs text-amber-700">
+              <Loader size={12} className="animate-spin shrink-0" /> {t('op.txWalletApprove')}
+            </div>
+          )}
+          {approve.isConfirming && (
+            <div className="flex items-center gap-2 px-3 py-2 bg-amber-50 rounded-lg text-xs text-amber-700">
+              <Loader size={12} className="animate-spin shrink-0" /> {t('op.txConfirming')}
+            </div>
+          )}
+          {approveErrorText && (
+            <div className="flex items-start gap-2 px-3 py-2 bg-red-50 rounded-lg">
+              <AlertCircle size={12} className="text-red-500 shrink-0 mt-0.5" />
+              <p className="text-xs text-red-700">{approveErrorText}</p>
+            </div>
+          )}
+
+          {/* Step 2: Purchase */}
           <div className={`flex items-center gap-3 p-3 rounded-xl ${purchase.isSuccess ? 'bg-emerald-50' : 'bg-gray-50'}`}>
             <div className={`w-6 h-6 rounded-full flex items-center justify-center text-xs font-bold shrink-0 ${purchase.isSuccess ? 'bg-emerald-500 text-white' : 'bg-gray-200 text-gray-600'}`}>
               {purchase.isSuccess ? <Check size={12} /> : '2'}
@@ -431,36 +589,59 @@ export function PurchaseFlow({ lotId, onBack }: PurchaseFlowProps) {
           </div>
         </div>
 
-        <div className="px-6 pb-6 space-y-3">
-          <button
-            onClick={() => void handlePurchase()}
-            disabled={!hasAllowance || isPurchasePending || isPurchaseStateLoading}
-            className="w-full py-3 rounded-xl bg-violet-600 text-white font-medium hover:bg-violet-700 active:scale-95 transition-all disabled:opacity-50 disabled:cursor-not-allowed"
-          >
-            {isPurchasePending
-              ? t('purchase.ctaBuying')
-              : isPurchaseStateLoading
-                ? t('purchase.checkingState')
-                : !hasAllowance
-                  ? t('purchase.ctaNeedApprove')
-                  : `${priceFormatted} ${t('purchase.ctaBuy')}`}
-          </button>
+        {/* Purchase button — hidden once purchased */}
+        {!isAlreadyPurchased && !purchase.isSuccess && (
+          <div className="px-6 pb-6 space-y-3">
+            <button
+              onClick={() => void handlePurchase()}
+              disabled={!hasAllowance || isPurchasePending || isPurchaseStateLoading}
+              className="w-full py-3 rounded-xl bg-violet-600 text-white font-medium hover:bg-violet-700 active:scale-95 transition-all disabled:opacity-50 disabled:cursor-not-allowed"
+            >
+              {isPurchasePending
+                ? (purchase.isConfirming ? t('op.txConfirming') : t('purchase.ctaBuying'))
+                : isPurchaseStateLoading
+                  ? t('purchase.checkingState')
+                  : !hasAllowance
+                    ? t('purchase.ctaNeedApprove')
+                    : `${priceFormatted} ${t('purchase.ctaBuy')}`}
+            </button>
 
-          {isAlreadyPurchased && existingTokenId !== null && (
+            {/* Purchase Tx status */}
+            {purchase.isPending && (
+              <div className="flex items-center gap-2 px-3 py-2 bg-amber-50 rounded-lg text-xs text-amber-700">
+                <Loader size={12} className="animate-spin shrink-0" /> {t('op.txWalletApprove')}
+              </div>
+            )}
+            {purchase.isConfirming && (
+              <div className="flex items-center gap-2 px-3 py-2 bg-amber-50 rounded-lg text-xs text-amber-700">
+                <Loader size={12} className="animate-spin shrink-0" /> {t('op.txConfirming')}
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* Already purchased badge */}
+        {(isAlreadyPurchased || purchase.isSuccess) && (
+          <div className="px-6 pb-6">
             <div className="flex items-center gap-2 p-3 bg-emerald-50 rounded-xl">
               <CheckCircle size={16} className="text-emerald-600 shrink-0" />
               <p className="text-sm text-emerald-700 font-medium">{t('purchase.alreadyPurchased')}</p>
             </div>
-          )}
-        </div>
-
-        {purchaseErrorText && (
-          <div className="px-6 pb-6">
-            <p className="text-xs text-red-600 bg-red-50 p-3 rounded-lg">{purchaseErrorText}</p>
           </div>
         )}
 
-        {purchase.hash && !purchase.isSuccess && (
+        {/* Purchase error */}
+        {purchaseErrorText && (
+          <div className="px-6 pb-4">
+            <div className="flex items-start gap-2 p-3 bg-red-50 rounded-lg">
+              <AlertCircle size={14} className="text-red-500 shrink-0 mt-0.5" />
+              <p className="text-xs text-red-700">{purchaseErrorText}</p>
+            </div>
+          </div>
+        )}
+
+        {/* Tx explorer link — shown whenever we have a hash */}
+        {purchase.hash && (
           <div className="px-6 pb-6">
             <a
               href={buildTxExplorerUrl(CHAIN_ID, purchase.hash)}

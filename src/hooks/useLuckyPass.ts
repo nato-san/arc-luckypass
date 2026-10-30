@@ -1,12 +1,38 @@
 import { useReadContract, useReadContracts, useWriteContract, useWaitForTransactionReceipt, useAccount } from 'wagmi'
+import { useQueryClient, type Query } from '@tanstack/react-query'
 import { erc20Abi } from 'viem'
 import { arcTestnet } from 'viem/chains'
 import { LUCKY_PASS_ADDRESS, LUCKY_PASS_ABI } from '@/lib/luckypass-abi'
 import { getUsdc } from '@/onchain-facts'
+import { useEffect } from 'react'
 
 const CHAIN_ID = arcTestnet.id
 const usdc = getUsdc(CHAIN_ID)
 export const USDC_ADDRESS = usdc?.address as `0x${string}`
+
+// ─── Query invalidation helpers ───────────────────────────────────────────────
+// wagmi v2 stores readContract results under:
+//   ['readContract', { chainId, address, functionName, args, ... }]
+// TanStack Query v5 invalidateQueries({ queryKey }) does DEEP EQUAL on each
+// element — a partial object like { functionName } does NOT match.
+// We use `predicate` to match by functionName (and optionally address) so that
+// every variant (different args/lotIds) of a given function is invalidated at
+// once. This is the only reliable approach without reconstructing every exact key.
+
+type AnyRecord = Record<string, unknown>
+
+function byFn(fns: string[], addr?: string) {
+  return {
+    predicate: (q: Query) => {
+      const k = q.queryKey
+      if (!Array.isArray(k) || k[0] !== 'readContract') return false
+      const meta = k[1] as AnyRecord | undefined
+      if (!meta) return false
+      if (addr && (meta['address'] as string | undefined)?.toLowerCase() !== addr.toLowerCase()) return false
+      return fns.includes(meta['functionName'] as string)
+    },
+  }
+}
 
 // ─── Lot data ─────────────────────────────────────────────────────────────────
 
@@ -232,11 +258,25 @@ export function useUsdcAllowance(owner: `0x${string}` | undefined) {
   })
 }
 
-// ─── Write hooks (each returns writeContract + status) ───────────────────────
+// ─── Write hooks ──────────────────────────────────────────────────────────────
+// Each write hook:
+//   1. Exposes isPending (wallet signing) + isConfirming (waiting for receipt)
+//   2. On isSuccess, invalidates the relevant read queries so wagmi refetches them
+//      automatically — no manual refetch() calls needed in components.
 
 export function useEnter() {
+  const { address } = useAccount()
+  const qc = useQueryClient()
   const { writeContract, data: hash, isPending, error } = useWriteContract()
   const { isLoading: isConfirming, isSuccess } = useWaitForTransactionReceipt({ hash })
+
+  useEffect(() => {
+    if (!isSuccess || !hash) return
+    // hasEntered, entrantCount — by functionName predicate (args-agnostic)
+    void qc.invalidateQueries(byFn(['hasEntered', 'entrantCount'], LUCKY_PASS_ADDRESS))
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isSuccess])
+
   return {
     enter: (lotId: bigint) =>
       writeContract({ chainId: CHAIN_ID, address: LUCKY_PASS_ADDRESS, abi: LUCKY_PASS_ABI, functionName: 'enter', args: [lotId] }),
@@ -245,8 +285,17 @@ export function useEnter() {
 }
 
 export function useApproveUsdc() {
+  const qc = useQueryClient()
+  const { address } = useAccount()
   const { writeContract, data: hash, isPending, error } = useWriteContract()
   const { isLoading: isConfirming, isSuccess } = useWaitForTransactionReceipt({ hash })
+
+  useEffect(() => {
+    if (!isSuccess || !hash) return
+    void qc.invalidateQueries(byFn(['allowance'], USDC_ADDRESS))
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isSuccess])
+
   return {
     approve: (amount: bigint) =>
       writeContract({ chainId: CHAIN_ID, address: USDC_ADDRESS, abi: erc20Abi, functionName: 'approve', args: [LUCKY_PASS_ADDRESS, amount] }),
@@ -255,8 +304,19 @@ export function useApproveUsdc() {
 }
 
 export function usePurchase() {
+  const qc = useQueryClient()
+  const { address } = useAccount()
   const { writeContract, data: hash, isPending, error } = useWriteContract()
   const { isLoading: isConfirming, isSuccess, data: receipt } = useWaitForTransactionReceipt({ hash })
+
+  useEffect(() => {
+    if (!isSuccess || !hash) return
+    // ownerOf + tokenLot (useWinnerPurchaseState batch), isWinner, getLot (ticketsMinted++)
+    void qc.invalidateQueries(byFn(['ownerOf', 'tokenLot', 'isWinner', 'getLot'], LUCKY_PASS_ADDRESS))
+    void qc.invalidateQueries(byFn(['allowance'], USDC_ADDRESS))
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isSuccess])
+
   return {
     purchase: (lotId: bigint) =>
       writeContract({ chainId: CHAIN_ID, address: LUCKY_PASS_ADDRESS, abi: LUCKY_PASS_ABI, functionName: 'purchase', args: [lotId] }),
@@ -265,8 +325,17 @@ export function usePurchase() {
 }
 
 export function useRedeem() {
+  const qc = useQueryClient()
   const { writeContract, data: hash, isPending, error } = useWriteContract()
   const { isLoading: isConfirming, isSuccess } = useWaitForTransactionReceipt({ hash })
+
+  useEffect(() => {
+    if (!isSuccess || !hash) return
+    // ownerOf + tokenLot (useWinnerPurchaseState), getTicketInfo (isRedeemed), redemptionNonce, getLot
+    void qc.invalidateQueries(byFn(['ownerOf', 'tokenLot', 'getTicketInfo', 'redemptionNonce', 'getLot'], LUCKY_PASS_ADDRESS))
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isSuccess])
+
   return {
     redeem: (tokenId: bigint, signature: `0x${string}`, nonce: bigint, timestamp: bigint) =>
       writeContract({
@@ -279,8 +348,16 @@ export function useRedeem() {
 
 // Operator-only write hooks
 export function useCreateLot() {
+  const qc = useQueryClient()
   const { writeContract, data: hash, isPending, error } = useWriteContract()
   const { isLoading: isConfirming, isSuccess, data: receipt } = useWaitForTransactionReceipt({ hash })
+
+  useEffect(() => {
+    if (!isSuccess || !hash) return
+    void qc.invalidateQueries(byFn(['lotCount'], LUCKY_PASS_ADDRESS))
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isSuccess])
+
   return {
     createLot: (
       name: string, description: string, priceUsdc: bigint,
@@ -296,8 +373,17 @@ export function useCreateLot() {
 }
 
 export function useRequestDraw() {
+  const qc = useQueryClient()
   const { writeContract, data: hash, isPending, error } = useWriteContract()
   const { isLoading: isConfirming, isSuccess } = useWaitForTransactionReceipt({ hash })
+
+  useEffect(() => {
+    if (!isSuccess || !hash) return
+    // Lot state OPEN → DRAWING; entrantCount finalised
+    void qc.invalidateQueries(byFn(['getLot', 'entrantCount'], LUCKY_PASS_ADDRESS))
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isSuccess])
+
   return {
     requestDraw: (lotId: bigint, vrfFeeWei: bigint) =>
       writeContract({
@@ -309,8 +395,17 @@ export function useRequestDraw() {
 }
 
 export function useSelectWinners() {
+  const qc = useQueryClient()
   const { writeContract, data: hash, isPending, error } = useWriteContract()
   const { isLoading: isConfirming, isSuccess } = useWaitForTransactionReceipt({ hash })
+
+  useEffect(() => {
+    if (!isSuccess || !hash) return
+    // Lot state → ACTIVE; isWinner changes for all participants
+    void qc.invalidateQueries(byFn(['getLot', 'isWinner'], LUCKY_PASS_ADDRESS))
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isSuccess])
+
   return {
     selectWinners: (lotId: bigint) =>
       writeContract({ chainId: CHAIN_ID, address: LUCKY_PASS_ADDRESS, abi: LUCKY_PASS_ABI, functionName: 'selectWinners', args: [lotId] }),
@@ -319,8 +414,16 @@ export function useSelectWinners() {
 }
 
 export function useSetVenueOperator() {
+  const qc = useQueryClient()
   const { writeContract, data: hash, isPending, error } = useWriteContract()
   const { isLoading: isConfirming, isSuccess } = useWaitForTransactionReceipt({ hash })
+
+  useEffect(() => {
+    if (!isSuccess || !hash) return
+    void qc.invalidateQueries(byFn(['isVenueOperator'], LUCKY_PASS_ADDRESS))
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isSuccess])
+
   return {
     setVenueOperator: (lotId: bigint, operator: `0x${string}`, authorized: boolean) =>
       writeContract({
@@ -332,8 +435,16 @@ export function useSetVenueOperator() {
 }
 
 export function usePromoteWaitlist() {
+  const qc = useQueryClient()
   const { writeContract, data: hash, isPending, error } = useWriteContract()
   const { isLoading: isConfirming, isSuccess } = useWaitForTransactionReceipt({ hash })
+
+  useEffect(() => {
+    if (!isSuccess || !hash) return
+    void qc.invalidateQueries(byFn(['isWinner', 'getLot'], LUCKY_PASS_ADDRESS))
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isSuccess])
+
   return {
     promoteWaitlist: (lotId: bigint, winnerSlot: number) =>
       writeContract({
@@ -358,8 +469,16 @@ export function useIsApprovedStore(address: `0x${string}` | undefined) {
 }
 
 export function useApproveStore() {
+  const qc = useQueryClient()
   const { writeContract, data: hash, isPending, error } = useWriteContract()
   const { isLoading: isConfirming, isSuccess } = useWaitForTransactionReceipt({ hash })
+
+  useEffect(() => {
+    if (!isSuccess || !hash) return
+    void qc.invalidateQueries(byFn(['isApprovedStore'], LUCKY_PASS_ADDRESS))
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isSuccess])
+
   return {
     approveStore: (store: `0x${string}`) =>
       writeContract({ chainId: CHAIN_ID, address: LUCKY_PASS_ADDRESS, abi: LUCKY_PASS_ABI, functionName: 'approveStore', args: [store] }),
@@ -368,8 +487,16 @@ export function useApproveStore() {
 }
 
 export function useRevokeStore() {
+  const qc = useQueryClient()
   const { writeContract, data: hash, isPending, error } = useWriteContract()
   const { isLoading: isConfirming, isSuccess } = useWaitForTransactionReceipt({ hash })
+
+  useEffect(() => {
+    if (!isSuccess || !hash) return
+    void qc.invalidateQueries(byFn(['isApprovedStore'], LUCKY_PASS_ADDRESS))
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isSuccess])
+
   return {
     revokeStore: (store: `0x${string}`) =>
       writeContract({ chainId: CHAIN_ID, address: LUCKY_PASS_ADDRESS, abi: LUCKY_PASS_ABI, functionName: 'revokeStore', args: [store] }),
