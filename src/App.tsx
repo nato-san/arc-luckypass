@@ -2,7 +2,7 @@ import { useState, useEffect, useCallback } from 'react'
 import { useAccount, useChainId } from 'wagmi'
 import { ConnectKitButton } from 'connectkit'
 import { Ticket, Settings, Building2, Shield, BookOpen, AlertTriangle, Lock, Wifi } from 'lucide-react'
-import { arcTestnet } from 'viem/chains'
+import { CHAIN_ID, ACTIVE_CHAIN, LUCKY_PASS_CONTRACT_ADDRESS, VRF_COORDINATOR } from '@/lib/chain-config'
 import { LotGrid } from './components/LotGrid'
 import { PurchaseFlow } from './components/PurchaseFlow'
 import { OperatorDashboard } from './components/OperatorDashboard'
@@ -133,6 +133,13 @@ function BuyerApp({ initialLotId }: BuyerAppProps) {
             <span className="sm:hidden">LuckyPass</span>
           </button>
           <div className="flex items-center gap-1 sm:gap-1.5 shrink-0">
+            <a
+              href="#/store"
+              className="hidden sm:flex items-center gap-1 px-2.5 py-1.5 rounded-lg text-xs font-medium text-gray-500 hover:text-gray-900 hover:bg-gray-100 transition-colors"
+            >
+              <Settings size={12} />
+              {t('nav.storeMgmt')}
+            </a>
             <LanguageToggle />
             <ConnectKitButton />
           </div>
@@ -152,12 +159,12 @@ function BuyerApp({ initialLotId }: BuyerAppProps) {
             </div>
             {/* LotGrid works even when wallet is not connected */}
             <LotGrid onSelectLot={setLocalLotId} />
-            {/* Testnet info */}
+            {/* Network info — driven by chain-config, works for both Testnet and Mainnet */}
             <div className="mt-8 p-4 bg-white rounded-xl border border-gray-100 text-xs text-gray-400 space-y-1">
-              <p className="font-medium text-gray-600">{t('home.testnetInfo')}</p>
-              <p>{t('home.contract')}: <span className="font-mono">0xab7678c528f1d517d642c13e3fd97124a743abe8</span></p>
-              <p>{t('home.randomness')}: D20DAO VRF (Arc Testnet Coordinator)</p>
-              <p>{t('home.chain')}: Arc Testnet (5042002)</p>
+              <p className="font-medium text-gray-600">{t('home.networkInfo')}</p>
+              <p>{t('home.contract')}: <span className="font-mono break-all">{LUCKY_PASS_CONTRACT_ADDRESS}</span></p>
+              <p>{t('home.randomness')}: D20DAO VRF (<span className="font-mono">{VRF_COORDINATOR.slice(0, 10)}…</span>)</p>
+              <p>{t('home.chain')}: {ACTIVE_CHAIN.name} ({CHAIN_ID})</p>
             </div>
           </div>
         ) : (
@@ -222,7 +229,7 @@ function StoreApp({ initialView, navigate }: StoreAppProps) {
   // view is always derived from the hash (initialView) — no local state needed
   const view = initialView
 
-  const isCorrectChain = chainId === arcTestnet.id
+  const isCorrectChain = chainId === CHAIN_ID
   // canManage = wallet connected (createLot is permissionless)
   const { canManage } = useRole(1n)
 

@@ -1,19 +1,15 @@
 /**
- * ChainGuard — Arc Testnet network enforcement UI.
+ * ChainGuard — network enforcement UI.
  *
- * Shows a prominent banner (not a full-page block) when the connected wallet
- * is on the wrong chain. The "Switch" button calls wagmi's useSwitchChain,
- * which issues wallet_switchEthereumChain first. If the wallet returns error
- * code 4902 (chain not added), wagmi automatically follows up with
- * wallet_addEthereumChain so MetaMask prompts the user to add Arc Testnet.
- *
- * If the wallet rejects the switch (user cancels or wallet errors), a clear
- * Japanese/English error message is shown inline — no crash, no silent failure.
+ * Shows a prominent banner when the connected wallet is on the wrong chain.
+ * Targets ACTIVE_CHAIN_ID from chain-config (works for both Testnet and Mainnet).
+ * The "Switch" button calls wagmi's useSwitchChain → wallet_switchEthereumChain.
+ * On error 4902 (chain not added), wagmi follows up with wallet_addEthereumChain.
  */
 
 import { useState } from 'react'
 import { useSwitchChain, useAccount } from 'wagmi'
-import { CHAIN_ID as ACTIVE_CHAIN_ID } from '@/lib/chain-config'
+import { CHAIN_ID as ACTIVE_CHAIN_ID, ACTIVE_CHAIN } from '@/lib/chain-config'
 import { AlertTriangle, RefreshCw } from 'lucide-react'
 import { useLocale } from '../i18n/LocaleContext'
 
@@ -52,7 +48,7 @@ export function ChainGuard() {
           <AlertTriangle size={16} className="text-amber-600 shrink-0 mt-0.5" />
           <div className="min-w-0">
             <p className="text-sm font-medium text-amber-900">
-              {t('network.wrongNetwork')}
+              {t('network.wrongNetwork')} — {ACTIVE_CHAIN.name} (Chain ID: {ACTIVE_CHAIN_ID})
             </p>
             <p className="text-xs text-amber-700 mt-0.5">
               {t('network.addOrSwitchHint')}

@@ -5,11 +5,12 @@ export type Locale = 'ja' | 'en'
 
 export const translations = {
   // ─── Navigation tabs ──────────────────────────────────────────────────────
-  'nav.lottery':        { ja: '抽選に参加',  en: 'Enter Lottery' },
-  'nav.storeAdmin':     { ja: '店舗管理',    en: 'Store Admin' },
-  'nav.operations':     { ja: '運営管理',    en: 'Operations' },
-  'nav.redeem':         { ja: 'QR引換',      en: 'QR Redeem' },
-  'nav.manual':         { ja: '使い方',      en: 'Guide' },
+  'nav.lottery':        { ja: '抽選に参加',          en: 'Enter Lottery' },
+  'nav.storeAdmin':     { ja: '店舗管理',            en: 'Store Admin' },
+  'nav.operations':     { ja: '運営管理',            en: 'Operations' },
+  'nav.redeem':         { ja: 'QR引換',              en: 'QR Redeem' },
+  'nav.manual':         { ja: '使い方',              en: 'Guide' },
+  'nav.storeMgmt':      { ja: '運営管理',            en: 'Store Management' },
 
   // ─── Store app UI ──────────────────────────────────────────────────────────
   'store.appTitle':        { ja: 'LuckyPass 管理',       en: 'LuckyPass Admin' },
@@ -29,7 +30,7 @@ export const translations = {
   'gate.notAdminDesc':      { ja: '接続中のウォレットはこのコントラクトの Platform Admin ではありません。', en: 'The connected wallet is not the Platform Admin of this contract.' },
   'gate.notStoreTitle':     { ja: '承認済み店舗の権限がありません',      en: 'Approved store access required' },
   'gate.notStoreDesc':      { ja: '接続中のウォレットは承認済み店舗ではありません。Platform Admin に承認を依頼してください。', en: 'The connected wallet is not an approved store. Ask the Platform Admin to approve your wallet.' },
-  'gate.switchNetwork':     { ja: 'まず Arc Testnet に切り替えてください。', en: 'Please switch to Arc Testnet first.' },
+  'gate.switchNetwork':     { ja: 'まず正しいネットワークに切り替えてください。', en: 'Please switch to the correct network first.' },
 
   // ─── Stale contract warning banner ────────────────────────────────────
   'banner.staleTitle':  { ja: '旧コントラクト参照中 — 管理機能は検証不可', en: 'Pointing to old contract — admin functions cannot be verified' },
@@ -40,33 +41,35 @@ export const translations = {
   'header.ticketRedeem':      { ja: 'チケット引換',              en: 'Ticket Redeem' },
 
   // ─── Network warning / ChainGuard ─────────────────────────────────────────
+  // Chain name and ID are injected dynamically by ChainGuard from chain-config.
   'network.switchToArcTestnet': {
     ja: 'Arc Testnetに切り替えてください (Chain ID: 5042002)',
     en: 'Please switch to Arc Testnet (Chain ID: 5042002)',
   },
   'network.wrongNetwork': {
-    ja: 'Arc Testnet (Chain ID: 5042002) に接続してください',
-    en: 'Please connect to Arc Testnet (Chain ID: 5042002)',
+    ja: '正しいネットワークに接続してください',
+    en: 'Please connect to the correct network',
   },
   'network.addOrSwitchHint': {
-    ja: 'MetaMaskにArc Testnetが未登録の場合、自動でネットワーク追加の確認が表示されます',
-    en: 'If Arc Testnet is not in MetaMask, you will be prompted to add it automatically',
+    ja: 'ウォレットにネットワークが未登録の場合、自動でネットワーク追加の確認が表示されます',
+    en: 'If the network is not in your wallet, you will be prompted to add it automatically',
   },
-  'network.switchButton':  { ja: 'Arc Testnetに切り替え', en: 'Switch to Arc Testnet' },
-  'network.switching':     { ja: '切り替え中...',          en: 'Switching...' },
+  'network.switchButton':  { ja: 'ネットワークを切り替え', en: 'Switch Network' },
+  'network.switching':     { ja: '切り替え中...',           en: 'Switching...' },
   'network.switchRejected': {
-    ja: 'ネットワーク切り替えがキャンセルされました。MetaMaskで許可してください。',
-    en: 'Network switch was rejected. Please approve in MetaMask.',
+    ja: 'ネットワーク切り替えがキャンセルされました。ウォレットで許可してください。',
+    en: 'Network switch was rejected. Please approve in your wallet.',
   },
   'network.switchError': {
-    ja: 'ネットワーク切り替えに失敗しました。手動でArc Testnet (Chain ID: 5042002, RPC: https://rpc.testnet.arc.io) を追加してください。',
-    en: 'Network switch failed. Please add Arc Testnet manually (Chain ID: 5042002, RPC: https://rpc.testnet.arc.io).',
+    ja: 'ネットワーク切り替えに失敗しました。ウォレットで手動で追加してください。',
+    en: 'Network switch failed. Please add the network manually in your wallet.',
   },
 
   // ─── Home / Lot list ──────────────────────────────────────────────────────
   'home.title':       { ja: '限定アイテム抽選',                                         en: 'Limited Edition Lottery' },
   'home.subtitle':    { ja: 'ウォレットを接続して無料でエントリー。当選者のみUSDCで購入できます。', en: 'Connect your wallet to enter for free. Only winners may purchase with USDC.' },
   'home.connectPrompt': { ja: 'ウォレットを接続してエントリーしてください',              en: 'Connect your wallet to enter' },
+  'home.networkInfo': { ja: 'ネットワーク情報',                                           en: 'Network Info' },
   'home.testnetInfo': { ja: 'Arc Testnet 情報',                                         en: 'Arc Testnet Info' },
   'home.contract':    { ja: 'コントラクト',                                              en: 'Contract' },
   'home.randomness':  { ja: 'ランダム性',                                               en: 'Randomness' },
