@@ -5,6 +5,7 @@ import { formatUsdc } from '@/onchain-money'
 import { useLot, useHasEntered, useIsWinner, useEntrantCount, useEnter } from '@/hooks/useLuckyPass'
 import { LOT_STATE_COLORS } from '@/lib/lot-constants'
 import { useLocale } from '@/i18n/LocaleContext'
+import { getLotImage, decodeDescription } from '@/lib/lot-images'
 import { toast } from 'sonner'
 
 interface LotCardProps {
@@ -31,7 +32,9 @@ export function LotCard({ lotId, onSelectLot }: LotCardProps) {
     )
   }
 
-  const [name, description, priceUsdc, supply, , , stateNum, ticketsMinted] = lot
+  const [name, rawDescription, priceUsdc, supply, , , stateNum, ticketsMinted] = lot
+  const { text: description } = decodeDescription(rawDescription)
+  const lotImage = getLotImage(lotId, rawDescription)
   const state = Number(stateNum)
   const price = formatUsdc(priceUsdc)
   const remaining = Number(supply) - Number(ticketsMinted)
@@ -60,6 +63,19 @@ export function LotCard({ lotId, onSelectLot }: LotCardProps) {
       className="bg-white rounded-2xl border border-gray-100 shadow-sm hover:shadow-md transition-shadow cursor-pointer overflow-hidden"
       onClick={() => onSelectLot(lotId)}
     >
+      {/* Product image — cross-device via description JSON or localStorage */}
+      {lotImage && (
+        <div className="w-full bg-gray-50 overflow-hidden" style={{ maxHeight: '160px' }}>
+          <img
+            src={lotImage}
+            alt={name}
+            className="w-full object-cover"
+            style={{ maxHeight: '160px' }}
+            onError={e => { (e.target as HTMLImageElement).parentElement!.style.display = 'none' }}
+          />
+        </div>
+      )}
+
       {/* Header */}
       <div className="p-5 pb-3">
         <div className="flex items-start justify-between gap-2 mb-2">

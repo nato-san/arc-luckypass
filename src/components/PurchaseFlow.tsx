@@ -16,7 +16,7 @@ import { LUCKY_PASS_ADDRESS, LUCKY_PASS_ABI } from '@/lib/luckypass-abi'
 import { TicketQR } from './TicketQR'
 import { useLocale } from '@/i18n/LocaleContext'
 import { LOT_STATE_COLORS } from '@/lib/lot-constants'
-import { getLotImage } from '@/lib/lot-images'
+import { getLotImage, decodeDescription } from '@/lib/lot-images'
 import { toast } from 'sonner'
 
 // CHAIN_ID imported from chain-config
@@ -136,7 +136,9 @@ export function PurchaseFlow({ lotId, onBack }: PurchaseFlowProps) {
 
   if (!lot) return null
 
-  const [name, description, priceUsdc, supply, , , stateNumRaw, ticketsMintedBig, , entryOpenAtRaw, entryCloseAtRaw] = lot
+  const [name, rawDescription, priceUsdc, supply, , , stateNumRaw, ticketsMintedBig, , entryOpenAtRaw, entryCloseAtRaw] = lot
+  // Decode description: extract plain text (and image URL is handled via getLotImage below)
+  const { text: description } = decodeDescription(rawDescription)
   const entryOpenAt  = Number(entryOpenAtRaw)
   const entryCloseAt = Number(entryCloseAtRaw)
   const state = Number(stateNumRaw)
@@ -216,7 +218,7 @@ export function PurchaseFlow({ lotId, onBack }: PurchaseFlowProps) {
   const entryClosed  = entryCloseAt > 0 && nowSec >= entryCloseAt
 
   // ── Lot header — shown in all non-QR views ────────────────────────────────
-  const lotImage = getLotImage(lotId)
+  const lotImage = getLotImage(lotId, rawDescription)
   const LotHeader = () => (
     <div className="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden mb-4">
       {lotImage && (

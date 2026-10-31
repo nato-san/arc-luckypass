@@ -2,8 +2,8 @@ import { useState, useEffect, useSyncExternalStore } from 'react'
 import { useAccount, useBalance, usePublicClient } from 'wagmi'
 import { Plus, Zap, Users, ChevronDown, ChevronUp, ExternalLink, Globe, CheckCircle, Copy, Check, Loader } from 'lucide-react'
 import { parseUnits, formatUnits } from 'viem'
-import { getLotImage, setLotImage } from '@/lib/lot-images'
-import { CHAIN_ID, buildTxUrl } from '@/lib/chain-config'
+import { getLotImage, setLotImage, encodeDescription } from '@/lib/lot-images'
+import { CHAIN_ID, buildTxUrl, VRF_COORDINATOR as ACTIVE_VRF_COORDINATOR } from '@/lib/chain-config'
 import {
   useLotCount, useLot, useEntrantCount, useWaitlistLength,
   useCreateLot, useRequestDraw, useSelectWinners, useSetVenueOperator, usePromoteWaitlist,
@@ -32,7 +32,8 @@ function getCoarseClockSnapshot() { return _clockNowSec }
 function useNowSec() {
   return useSyncExternalStore(subscribeToCoarseClock, getCoarseClockSnapshot, getCoarseClockSnapshot)
 }
-const VRF_COORDINATOR = '0xd20DA0FF9087d053f0291524Eac12abA1ADBd945' as const
+// VRF_COORDINATOR is imported from chain-config (Testnet or Mainnet depending on VITE_CHAIN).
+// Do NOT hardcode a network-specific address here.
 
 const COORDINATOR_ABI = [
   {
@@ -67,6 +68,8 @@ function LotRow({ lotId }: LotRowProps) {
   const [expanded, setExpanded] = useState(false)
   const [operatorAddr, setOperatorAddr] = useState('')
   const [copiedLotUrl, setCopiedLotUrl] = useState(false)
+  // description (lot[1]) is not yet loaded at useState init time; resolve after lot loads.
+  // We keep the initial localStorage value so the input shows immediately.
   const [lotImageUrl, setLotImageUrl] = useState(() => getLotImage(lotId) ?? '')
   const [imgSaved, setImgSaved] = useState(false)
   const { data: lot } = useLot(lotId)
@@ -82,6 +85,16 @@ function LotRow({ lotId }: LotRowProps) {
   const [showDrawConfirm, setShowDrawConfirm] = useState(false)
   // 30-second coarse clock — updates via useSyncExternalStore (lint-safe).
   const nowSec = useNowSec()
+
+  // When lot data arrives, populate the image URL input from the description JSON
+  // if localStorage has no value (i.e. first time opening on this browser).
+  useEffect(() => {
+    if (!lot) return
+    const descImg = getLotImage(lotId, lot[1])
+    if (descImg && !lotImageUrl) setLotImageUrl(descImg)
+  // Only run when lot loads for the first time — lotImageUrl intentionally excluded
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [lot])
 
   if (!lot) return null
 
@@ -124,7 +137,7 @@ function LotRow({ lotId }: LotRowProps) {
       const baseFee = block.baseFeePerGas ?? 0n
       const baseFeeBuffered = (baseFee * 130n) / 100n
       const fee = await publicClient.readContract({
-        address: VRF_COORDINATOR,
+        address: ACTIVE_VRF_COORDINATOR,
         abi: COORDINATOR_ABI,
         functionName: 'quoteFeeAt',
         args: [CALLBACK_GAS, baseFeeBuffered],
@@ -452,8 +465,10 @@ function CreateLotForm({ onClose, onCreated }: CreateLotFormProps) {
       const supply = parseInt(form.supply)
       const maxEntrants = parseInt(form.maxEntrants) || 200
       const window = windowSec ?? 0n
+      // Embed image URL into description as JSON when provided (cross-device delivery)
+      const encodedDesc = encodeDescription(form.description, form.imageUrl)
       createLot.createLot(
-        form.name, form.description, priceRaw, supply, window, maxEntrants,
+        form.name, encodedDesc, priceRaw, supply, window, maxEntrants,
         BigInt(entryOpenAt ?? 0),
         BigInt(entryCloseAt),
         BigInt(fixedDeadlineAt ?? 0),
