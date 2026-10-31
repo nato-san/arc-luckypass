@@ -1,8 +1,7 @@
 import { useState, useEffect, useCallback } from 'react'
 import { useSignTypedData } from 'wagmi'
 import { ExternalLink, Download, RefreshCw } from 'lucide-react'
-import { arcTestnet } from 'viem/chains'
-import { buildTxExplorerUrl } from '@/onchain-facts'
+import { CHAIN_ID, buildTxUrl } from '@/lib/chain-config'
 import { generateQrDataUrl } from '@/lib/qr'
 import {
   buildRedemptionDomain,
@@ -16,7 +15,8 @@ import { useTicketInfo, useRedemptionNonce } from '@/hooks/useLuckyPass'
 import { useLocale } from '@/i18n/LocaleContext'
 import { toast } from 'sonner'
 
-const CHAIN_ID = arcTestnet.id
+// CHAIN_ID is imported from chain-config — resolves to Mainnet (5042) or Testnet (5042002)
+// depending on VITE_CHAIN env var. Never hardcode arcTestnet.id here.
 const REDEMPTION_EXPIRY = 300 // seconds — must match contract
 
 interface TicketQRProps {
@@ -174,7 +174,7 @@ export function TicketQR({ tokenId, lotName, purchaseTxHash }: TicketQRProps) {
             <div className="flex items-center justify-between gap-2">
               <span className="text-gray-500 shrink-0">{t('qr.purchaseTx')}</span>
               <a
-                href={buildTxExplorerUrl(CHAIN_ID, purchaseTxHash)}
+                href={buildTxUrl(purchaseTxHash)}
                 target="_blank"
                 rel="noopener noreferrer"
                 className="flex items-center gap-1 font-mono text-blue-600 hover:text-blue-800 truncate"
